@@ -1,0 +1,25 @@
+services:
+  authelia:
+    image: authelia/authelia:latest
+    volumes:
+      - ./config:/config
+      - authelia-data:/data
+    networks:
+      - ${NETWORK_NAME}
+    environment:
+      - AUTHELIA_JWT_SECRET=${AUTHELIA_JWT_SECRET}
+      - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
+      - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authelia.rule=Host(`${AUTH_DOMAIN}`)"
+      - "traefik.http.routers.authelia.entrypoints=web"
+      - "traefik.http.services.authelia.loadbalancer.server.port=9091"
+    restart: unless-stopped
+
+volumes:
+  authelia-data:
+
+networks:
+  ${NETWORK_NAME}:
+    external: true

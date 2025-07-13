@@ -1,0 +1,19 @@
+# Authelia Users Database
+# Generate password hash with: docker run authelia/authelia:latest authelia hash-password 'your-password'
+
+users:
+  admin:
+    displayname: "Administrator"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$BpLnfgDsc2WD8F2q$o/vzA4myCqZZ36bUGsDY//8mKUYNZZaR0t4MFFSs+iM"  # changeme
+    email: admin@example.com
+    groups:
+      - admins
+      - dev
+
+  # Add more users as needed
+  # user:
+  #   displayname: "User Name"
+  #   password: "$argon2id$..."
+  #   email: user@example.com
+  #   groups:
+  #     - dev

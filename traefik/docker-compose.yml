@@ -1,0 +1,21 @@
+services:
+  traefik:
+    image: traefik:v3.0
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/traefik.yml:/etc/traefik/traefik.yml:ro
+      - traefik-data:/data
+    networks:
+      - ${NETWORK_NAME}
+    restart: unless-stopped
+
+volumes:
+  traefik-data:
+
+networks:
+  ${NETWORK_NAME}:
+    external: true
