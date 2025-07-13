@@ -1,0 +1,14 @@
+# Dynamic configuration for development - external services
+http:
+  routers:
+    memrok-app:
+      rule: "Host(`app.dev.memrok.com`)"
+      entryPoints:
+        - "web"
+      service: "memrok-app"
+      
+  services:
+    memrok-app:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3000"

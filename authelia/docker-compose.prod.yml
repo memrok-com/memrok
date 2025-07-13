@@ -1,0 +1,8 @@
+# Production override for Authelia with SSL
+services:
+  authelia:
+    labels:
+      # Use HTTPS router for production
+      - "traefik.http.routers.authelia.entrypoints=websecure"
+      - "traefik.http.routers.authelia.tls=true"
+      - "traefik.http.routers.authelia.tls.certresolver=letsencrypt"

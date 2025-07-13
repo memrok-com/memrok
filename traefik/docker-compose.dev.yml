@@ -1,0 +1,21 @@
+# Development override for Traefik - routes to memrok app running on host
+services:
+  traefik:
+    command:
+      # API and Dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=true" # For development only
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=${DOCKER_NETWORK}"
+      # File provider for dynamic configuration (dev only)
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./dynamic.dev.yml:/etc/traefik/dynamic/dynamic.dev.yml:ro
