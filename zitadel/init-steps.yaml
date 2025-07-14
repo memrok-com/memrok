@@ -5,11 +5,6 @@ FirstInstance:
   # Organization configuration
   Org:
     Name: "memrok"
-    # Custom link back to memrok app in console
-    Links:
-      - Name: "memrok"
-        Url: "https://app.dev.memrok.com"
-        NewTab: true
     # Projects and OIDC Applications (cannot be configured via env vars)
     Projects:
       - Name: "memrok"
