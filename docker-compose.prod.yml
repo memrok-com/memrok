@@ -1,4 +1,17 @@
 services:
+  traefik:
+    command:
+      - --certificatesresolvers.letsencrypt.acme.email=${EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=${DNS_PROVIDER}
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+    labels:
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+
+  zitadel:
+    labels:
+      - "traefik.http.routers.zitadel.tls.certresolver=letsencrypt"
+
   memrok:
     image: memrok/app:${MEMROK_VERSION:-latest}
     container_name: memrok-app

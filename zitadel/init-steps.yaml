@@ -1,0 +1,41 @@
+# Minimal Zitadel init configuration for things that cannot be done via environment variables
+# All other configuration is handled via environment variables in docker-compose.yml
+
+FirstInstance:
+  # Organization configuration
+  Org:
+    Name: "memrok"
+    # Custom link back to memrok app in console
+    Links:
+      - Name: "memrok"
+        Url: "https://app.dev.memrok.com"
+        NewTab: true
+    # Projects and OIDC Applications (cannot be configured via env vars)
+    Projects:
+      - Name: "memrok"
+        RoleAssertion: true
+        RoleCheck: true
+        HasProjectCheck: true
+        PrivateLabelingSetting: PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY
+        Applications:
+          - Name: "memrok-app"
+            Type: "web"
+            RedirectUris:
+              - "https://app.dev.memrok.com/auth/callback"
+              - "https://app.dev.memrok.com/auth/login"
+            PostLogoutRedirectUris:
+              - "https://app.dev.memrok.com/"
+            ResponseTypes:
+              - "OIDC_RESPONSE_TYPE_CODE"
+            GrantTypes:
+              - "OIDC_GRANT_TYPE_AUTHORIZATION_CODE"
+              - "OIDC_GRANT_TYPE_REFRESH_TOKEN"
+            AuthMethodType: "OIDC_AUTH_METHOD_TYPE_NONE"  # PKCE only
+            Version: "OIDC_VERSION_1_0"
+            DevMode: true  # Allow insecure connections for development
+            AccessTokenType: "OIDC_TOKEN_TYPE_JWT"
+            IdTokenRoleAssertion: true
+            IdTokenUserinfoAssertion: true
+            ClockSkew: "0s"
+            AdditionalOrigins:
+              - "https://app.dev.memrok.com"

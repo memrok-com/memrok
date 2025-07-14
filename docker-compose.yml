@@ -20,10 +20,6 @@ services:
       - --providers.docker.endpoint=unix:///var/run/docker.sock
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=memrok
-      - --certificatesresolvers.letsencrypt.acme.email=${EMAIL}
-      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
-      - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=${DNS_PROVIDER}
-      - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
       - --api.dashboard=false
       - --api.insecure=false
       - --log.level=WARN
@@ -31,7 +27,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.traefik.rule=Host(`${MEMROK_PROXY_DOMAIN}`)"
       - "traefik.http.routers.traefik.entrypoints=websecure"
-      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik.tls=true"
       - "traefik.http.routers.traefik.service=api@internal"
     networks:
       - memrok
@@ -40,7 +36,7 @@ services:
     restart: unless-stopped
     image: ghcr.io/zitadel/zitadel:v3.3.1
     container_name: memrok-zitadel
-    command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode external'
+    command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY}" --steps /config/init-steps.yaml'
     environment:
       ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
       ZITADEL_DATABASE_POSTGRES_PORT: 5432
@@ -54,14 +50,49 @@ services:
       ZITADEL_EXTERNALSECURE: true
       ZITADEL_EXTERNALDOMAIN: ${MEMROK_AUTH_DOMAIN}
       ZITADEL_EXTERNALPORT: 443
+      # SMTP Configuration
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_HOST: ${ZITADEL_SMTP_HOST}
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_USER: ${ZITADEL_SMTP_USER}
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_PASSWORD: ${ZITADEL_SMTP_PASSWORD}
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_TLS: ${ZITADEL_SMTP_TLS}
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROM: ${ZITADEL_SMTP_FROM}
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROMNAME: ${ZITADEL_SMTP_FROMNAME}
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_REPLYTOADDRESS: ${ZITADEL_SMTP_REPLYTO}
+      # Admin User Configuration  
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_FIRSTNAME: ${ZITADEL_ADMIN_FIRSTNAME}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_LASTNAME: ${ZITADEL_ADMIN_LASTNAME}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_NICKNAME: ${ZITADEL_ADMIN_NICKNAME}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_DISPLAYNAME: ${ZITADEL_ADMIN_DISPLAYNAME}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_ADDRESS: ${ZITADEL_ADMIN_EMAIL}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_VERIFIED: true
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: false
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PREFERREDLANGUAGE: en
+      # Branding Configuration
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_PRIMARYCOLOR: "#615fff" # indigo-500 (OKLCH)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_BACKGROUNDCOLOR: "#f5f5f4" # stone-100 (OKLCH)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_WARNCOLOR: "#ff2056" # rose-500 (OKLCH)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_FONTCOLOR: "#1c1917" # stone-900 (OKLCH)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_PRIMARYCOLORDARK: "#7c86ff" # indigo-400 (OKLCH dark variant)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_BACKGROUNDCOLORDARK: "#1c1917" # stone-900 (OKLCH dark variant)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_WARNCOLORDARK: "#ff2056" # rose-400 (OKLCH)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_FONTCOLORDARK: "#f5f5f4" # stone-100 (OKLCH - background colors flipped)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_HIDELOGINNAMESUFFIX: false # Allow users with different email domains
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_ERRORMSGPOPUP: false
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_DISABLEWATERMARK: false # Keep Zitadel attribution
     depends_on:
       zitadel-db:
         condition: service_healthy
+    volumes:
+      - ./zitadel/init-steps.yaml:/config/init-steps.yaml:ro
+      - zitadel-machinekey:/machinekey
+      - zitadel-pat:/pat
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.zitadel.rule=Host(`${MEMROK_AUTH_DOMAIN}`)"
       - "traefik.http.routers.zitadel.entrypoints=websecure"
-      - "traefik.http.routers.zitadel.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.zitadel.tls=true"
       - "traefik.http.services.zitadel.loadbalancer.server.port=8080"
     networks:
       - memrok
@@ -79,15 +110,17 @@ services:
     networks:
       - memrok
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready", "-d", "zitadel", "-U", "postgres"]
+      test: [ "CMD-SHELL", "pg_isready", "-d", "zitadel", "-U", "postgres" ]
       interval: 10s
       timeout: 30s
       retries: 5
       start_period: 20s
 
-
 volumes:
   zitadel-db-data:
+  zitadel-machinekey:
+  zitadel-pat:
+
 
 networks:
   memrok:

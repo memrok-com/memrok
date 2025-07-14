@@ -32,23 +32,24 @@ services:
       - "traefik.http.routers.traefik.service=api@internal"
 
   zitadel:
-    command: 'start-from-init --masterkey "MasterkeyNeedsToHave32Characters" --tlsMode disabled'
     environment:
-      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
-      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
       ZITADEL_EXTERNALSECURE: true
-      ZITADEL_EXTERNALDOMAIN: auth.dev.memrok.com
+      ZITADEL_EXTERNALDOMAIN: ${MEMROK_AUTH_DOMAIN}
       ZITADEL_EXTERNALPORT: 443
+      ZITADEL_TLS_ENABLED: false
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.zitadel.rule=Host(`auth.dev.memrok.com`)"
+      - "traefik.http.routers.zitadel.rule=Host(`${MEMROK_AUTH_DOMAIN}`)"
       - "traefik.http.routers.zitadel.entrypoints=websecure"
       - "traefik.http.routers.zitadel.tls=true"
+      - "traefik.http.services.zitadel.loadbalancer.server.scheme=h2c"
       - "traefik.http.services.zitadel.loadbalancer.server.port=8080"
 
   zitadel-db:
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
 
 
 networks:
