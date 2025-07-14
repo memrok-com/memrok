@@ -1,0 +1,7 @@
+# Authelia runtime files
+authelia/db.sqlite3
+authelia/notification.txt
+
+# Traefik runtime files  
+traefik/certs/
+traefik/acme/

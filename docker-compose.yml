@@ -1,0 +1,49 @@
+services:
+  traefik:
+    image: traefik:v3.4.4
+    container_name: memrok-traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=memrok
+      - --api.dashboard=false
+      - --api.insecure=false
+      - --log.level=INFO
+    networks:
+      - memrok
+
+  authelia:
+    image: authelia/authelia:4.39.5
+    container_name: memrok-authelia
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./authelia/configuration.yml:/config/configuration.yml:ro
+      - ./authelia/users_database.yml:/config/users_database.yml:ro
+      - authelia-data:/data
+    depends_on:
+      - traefik
+    networks:
+      - memrok
+
+volumes:
+  authelia-data:
+
+networks:
+  memrok:
+    name: ${DOCKER_NETWORK:-memrok}
+    driver: bridge

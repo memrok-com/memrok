@@ -1,0 +1,27 @@
+http:
+  routers:
+    # Protected routes - require Authelia authentication for /my/ paths (with or without locale)
+    memrok-app-protected:
+      rule: "Host(`app.dev.memrok.com`) && (PathPrefix(`/my/`) || PathPrefix(`/api/my/`) || PathRegexp(`^/[a-z]{2}/my/`) || PathRegexp(`^/[a-z]{2}-[A-Z]{2}/my/`))"
+      entryPoints:
+        - websecure
+      service: memrok-app
+      middlewares:
+        - authelia@docker
+      tls: true
+      priority: 2
+
+    # Public routes - everything else (no authentication required)
+    memrok-app-public:
+      rule: "Host(`app.dev.memrok.com`)"
+      entryPoints:
+        - websecure
+      service: memrok-app
+      tls: true
+      priority: 1
+
+  services:
+    memrok-app:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3000"  # Nuxt dev server
