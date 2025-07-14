@@ -8,6 +8,7 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/acme:/acme
     command:
       - --global.checkNewVersion=false
       - --global.sendAnonymousUsage=false
@@ -19,29 +20,74 @@ services:
       - --providers.docker.endpoint=unix:///var/run/docker.sock
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=memrok
+      - --certificatesresolvers.letsencrypt.acme.email=${EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=${DNS_PROVIDER}
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
       - --api.dashboard=false
       - --api.insecure=false
-      - --log.level=INFO
+      - --log.level=WARN
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`${MEMROK_PROXY_DOMAIN}`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik.service=api@internal"
     networks:
       - memrok
 
-  authelia:
-    image: authelia/authelia:4.39.5
-    container_name: memrok-authelia
+  zitadel:
     restart: unless-stopped
+    image: ghcr.io/zitadel/zitadel:v3.3.1
+    container_name: memrok-zitadel
+    command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode external'
     environment:
-      - TZ=UTC
-    volumes:
-      - ./authelia/configuration.yml:/config/configuration.yml:ro
-      - ./authelia/users_database.yml:/config/users_database.yml:ro
-      - authelia-data:/data
+      ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALSECURE: true
+      ZITADEL_EXTERNALDOMAIN: ${MEMROK_AUTH_DOMAIN}
+      ZITADEL_EXTERNALPORT: 443
     depends_on:
-      - traefik
+      zitadel-db:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zitadel.rule=Host(`${MEMROK_AUTH_DOMAIN}`)"
+      - "traefik.http.routers.zitadel.entrypoints=websecure"
+      - "traefik.http.routers.zitadel.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zitadel.loadbalancer.server.port=8080"
     networks:
       - memrok
+
+  zitadel-db:
+    restart: unless-stopped
+    image: postgres:17-alpine
+    container_name: memrok-zitadel-db
+    environment:
+      PGUSER: postgres
+      POSTGRES_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
+      POSTGRES_DB: zitadel
+    volumes:
+      - zitadel-db-data:/var/lib/postgresql/data
+    networks:
+      - memrok
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-d", "zitadel", "-U", "postgres"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 20s
+
 
 volumes:
-  authelia-data:
+  zitadel-db-data:
 
 networks:
   memrok:
