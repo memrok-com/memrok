@@ -81,10 +81,6 @@ services:
       ZITADEL_DEFAULTINSTANCE_LABELPOLICY_HIDELOGINNAMESUFFIX: false # Allow users with different email domains
       ZITADEL_DEFAULTINSTANCE_LABELPOLICY_ERRORMSGPOPUP: false
       ZITADEL_DEFAULTINSTANCE_LABELPOLICY_DISABLEWATERMARK: false # Keep Zitadel attribution
-      # Console Links Configuration
-      ZITADEL_FIRSTINSTANCE_ORG_LINK_NAME: "memrok"
-      ZITADEL_FIRSTINSTANCE_ORG_LINK_URL: "https://${MEMROK_APP_DOMAIN}"
-      ZITADEL_FIRSTINSTANCE_ORG_LINK_NEWTAB: true
     depends_on:
       zitadel-db:
         condition: service_healthy
