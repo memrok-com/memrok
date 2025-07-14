@@ -7,14 +7,7 @@ users:
   admin:
     displayname: "Admin User"
     password: "$argon2id$v=19$m=65536,t=3,p=4$KOEuvkF4WW7i78ZQTW4D9A$UJo0+scDIe/7yojaj1jA6RRlPNJPSn+TycQZSkv8QvI"  # Password: admin123
-    email: admin@memrok.com
+    email: admin@example.com
     groups:
       - admins
-      - dev
-
-  dev:
-    displayname: "Dev User"
-    password: "$argon2id$v=19$m=65536,t=3,p=4$KOEuvkF4WW7i78ZQTW4D9A$UJo0+scDIe/7yojaj1jA6RRlPNJPSn+TycQZSkv8QvI"  # Password: admin123
-    email: dev@memrok.com
-    groups:
       - dev
