@@ -38,6 +38,9 @@ services:
     container_name: memrok-zitadel
     command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY}" --steps /config/init-steps.yaml'
     environment:
+      # Machine key and PAT paths for service account
+      ZITADEL_FIRSTINSTANCE_MACHINEKEYPATH: /machinekey/memrok-provisioner.json
+      ZITADEL_FIRSTINSTANCE_PATPATH: /pat/memrok-provisioner.pat
       ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
       ZITADEL_DATABASE_POSTGRES_PORT: 5432
       ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel

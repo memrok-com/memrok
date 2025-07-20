@@ -1,7 +1,11 @@
-# Authelia runtime files
-authelia/db.sqlite3
-authelia/notification.txt
-
 # Traefik runtime files  
 traefik/certs/
 traefik/acme/
+
+# Zitadel generated credentials
+zitadel/machinekey/
+zitadel/pat/
+
+# Local environment overrides
+.env.local
+docker-compose.override.yml

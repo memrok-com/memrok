@@ -32,6 +32,10 @@ services:
       - "traefik.http.routers.traefik.service=api@internal"
 
   zitadel:
+    volumes:
+      - ./zitadel/init-steps.yaml:/config/init-steps.yaml:ro
+      - ./zitadel/machinekey:/machinekey
+      - ./zitadel/pat:/pat
     environment:
       ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_PASSWORD}
       ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}

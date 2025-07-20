@@ -2,6 +2,7 @@
 # All other configuration is handled via environment variables in docker-compose.yml
 
 FirstInstance:
+  InstanceName: "memrok"
   # Organization configuration
   Org:
     Name: "memrok"
@@ -12,25 +13,13 @@ FirstInstance:
         RoleCheck: true
         HasProjectCheck: true
         PrivateLabelingSetting: PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY
-        Applications:
-          - Name: "memrok-app"
-            Type: "web"
-            RedirectUris:
-              - "https://app.dev.memrok.com/auth/callback"
-              - "https://app.dev.memrok.com/auth/login"
-            PostLogoutRedirectUris:
-              - "https://app.dev.memrok.com/"
-            ResponseTypes:
-              - "OIDC_RESPONSE_TYPE_CODE"
-            GrantTypes:
-              - "OIDC_GRANT_TYPE_AUTHORIZATION_CODE"
-              - "OIDC_GRANT_TYPE_REFRESH_TOKEN"
-            AuthMethodType: "OIDC_AUTH_METHOD_TYPE_NONE"  # PKCE only
-            Version: "OIDC_VERSION_1_0"
-            DevMode: true  # Allow insecure connections for development
-            AccessTokenType: "OIDC_TOKEN_TYPE_JWT"
-            IdTokenRoleAssertion: true
-            IdTokenUserinfoAssertion: true
-            ClockSkew: "0s"
-            AdditionalOrigins:
-              - "https://app.dev.memrok.com"
+    # Service account for automated provisioning
+    Machine:
+      Machine:
+        Username: "memrok-provisioner"
+        Name: "memrok Provisioning Service"
+      MachineKey:
+        Type: 1  # JSON format
+      Pat:
+        # Personal Access Token with extended validity (1 year)
+        ExpirationDate: "2025-12-31T23:59:59Z"

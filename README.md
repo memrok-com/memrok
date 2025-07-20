@@ -17,45 +17,50 @@ This directory contains the Docker Compose configuration for deploying memrok wi
    ZITADEL_DB_ADMIN_PASSWORD=your-admin-password-here
    ```
 
-3. **Set domain configuration:**
+3. **Set domain and admin configuration:**
    ```bash
    # For development (in .env):
    MEMROK_AUTH_DOMAIN=auth.dev.memrok.com
    MEMROK_APP_DOMAIN=app.dev.memrok.com
+   ZITADEL_ADMIN_EMAIL=admin@yourdomain.com
+   ZITADEL_ADMIN_PASSWORD=your-secure-password
    
    # For production (in .env):
    MEMROK_AUTH_DOMAIN=auth.yourdomain.com
    MEMROK_APP_DOMAIN=app.yourdomain.com
+   ZITADEL_ADMIN_EMAIL=admin@yourdomain.com
+   ZITADEL_ADMIN_PASSWORD=your-secure-password
    ```
 
-4. **Start the infrastructure:**
+4. **Run the automated setup:**
    ```bash
-   # From project root
-   bun run setup      # First time setup (certs + infrastructure)
-   # OR
-   bun run infra:start   # Just start infrastructure
+   # From project root - this will:
+   # 1. Generate SSL certificates (dev only)
+   # 2. Start infrastructure (Traefik + Zitadel)
+   # 3. Automatically provision Zitadel project and application
+   bun run setup
    ```
-
-5. **Extract OIDC configuration** (after first startup):
-   ```bash
-   bun run auth:config
-   ```
+   
+   The setup will output your OIDC configuration automatically.
 
 ## Automated Configuration
 
 The deployment includes **fully automated Zitadel setup** with:
 
-- ✅ **Admin user**: `admin@{MEMROK_AUTH_DOMAIN}` 
+- ✅ **Admin user**: Created with email from `ZITADEL_ADMIN_EMAIL`
 - ✅ **Password**: Set via `ZITADEL_ADMIN_PASSWORD` env var
-- ✅ **OIDC Client**: Pre-configured for memrok app
-- ✅ **Development domains**: Includes localhost:3000 for dev
-- ✅ **Service account**: For API automation
-- ✅ **Project & roles**: Ready for user management
+- ✅ **Service account**: `memrok-provisioner` for automation
+- ✅ **Project**: "memrok" project automatically created
+- ✅ **OIDC Application**: User Agent (SPA) app with PKCE flow
+- ✅ **User authorization**: Admin user granted access to project
+- ✅ **Development domains**: Configured for `*.dev.memrok.com`
+
+The `bun run auth` command handles all provisioning automatically and outputs the OIDC configuration needed for your `.env` file.
 
 ### Login Credentials
 
 - **Admin Console**: https://{MEMROK_AUTH_DOMAIN}/ui/console
-- **Username**: `admin@{MEMROK_AUTH_DOMAIN}`
+- **Username**: Value from `ZITADEL_ADMIN_EMAIL` in .env
 - **Password**: Value from `ZITADEL_ADMIN_PASSWORD` in .env
 
 ## Architecture
@@ -87,7 +92,8 @@ The deployment includes **fully automated Zitadel setup** with:
 ZITADEL_MASTERKEY=          # 32+ characters
 ZITADEL_DB_PASSWORD=        # Database password  
 ZITADEL_DB_ADMIN_PASSWORD=  # Database admin password
-ZITADEL_ADMIN_PASSWORD=     # Zitadel admin user password
+ZITADEL_ADMIN_EMAIL=        # Admin user email
+ZITADEL_ADMIN_PASSWORD=     # Admin user password
 MEMROK_AUTH_DOMAIN=         # auth.yourdomain.com
 MEMROK_APP_DOMAIN=          # app.yourdomain.com
 ```
@@ -103,6 +109,9 @@ ZITADEL_SMTP_FROM=          # From email address
 ## Management Commands
 
 ```bash
+# Full setup (recommended for first time)
+bun run setup           # Certs + infrastructure + auth provisioning
+
 # Infrastructure control
 bun run infra:start     # Start all containers
 bun run infra:stop      # Stop all containers  
@@ -110,9 +119,9 @@ bun run infra:restart   # Restart containers
 bun run infra:logs      # View logs
 bun run infra:status    # Check status
 
-# Configuration
-bun run auth:config     # Extract OIDC client config
-bun run certs          # Generate development certificates
+# Authentication & configuration
+bun run auth            # Provision Zitadel project and application
+bun run certs           # Generate development certificates
 ```
 
 ## Troubleshooting
@@ -123,21 +132,25 @@ bun run certs          # Generate development certificates
 3. **"Environment variable not set"**: Copy and configure `.env`
 
 ### Authentication Issues  
-1. **Can't login**: Check `ZITADEL_ADMIN_PASSWORD` in .env
-2. **Client not found**: Run `bun run auth:config` to extract client ID
+1. **Can't login**: Check `ZITADEL_ADMIN_EMAIL` and `ZITADEL_ADMIN_PASSWORD` in .env
+2. **Client not found**: Run `bun run auth` to provision the application
 3. **Domain issues**: Verify `MEMROK_AUTH_DOMAIN` matches your setup
+4. **Provisioning fails**: Wait a moment and retry - Zitadel may still be starting
 
 ### Reset Zitadel Configuration
 ```bash
 # Stop containers and remove volumes to start fresh
 bun run infra:stop
-docker volume rm deployment_zitadel-db-data deployment_zitadel-machinekey deployment_zitadel-pat
+docker volume rm memrok_zitadel-db-data memrok_zitadel-machinekey memrok_zitadel-pat
 bun run infra:start
+bun run auth  # Re-provision after restart
 ```
 
 ## Security Notes
 
-- The automated setup uses **PKCE** (no client secrets needed)
-- **Development** includes `localhost:3000` for local Nuxt dev server
+- The automated setup creates a **User Agent (SPA)** application using **PKCE** flow
+- No client secrets are used - authentication uses PKCE for enhanced security
+- Service account credentials are automatically generated and stored in Docker volumes
+- **Development** uses trusted mkcert certificates
 - **Production** should use proper TLS certificates via Let's Encrypt
 - All secrets are stored in environment variables, not in code
