@@ -454,6 +454,50 @@ class ZitadelProvisioner {
     // Created user authorization
   }
 
+  async configureExternalLink(): Promise<void> {
+    if (!this.accessToken) {
+      throw new Error("Not authenticated")
+    }
+
+    // Configure custom link pointing back to the memrok app domain
+    const appBaseUrl = `https://${process.env.MEMROK_APP_DOMAIN}`
+
+    const response = await fetch(`${this.config.apiUrl}/management/v1/policies/privacy`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        docsLink: appBaseUrl,
+        customLink: appBaseUrl,
+        customLinkText: "Back to memrok"
+      }),
+    })
+
+    if (!response.ok) {
+      // Check if it's already configured by trying to update instead
+      const updateResponse = await fetch(`${this.config.apiUrl}/management/v1/policies/privacy`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customLink: appBaseUrl,
+          customLinkText: "Back to memrok"
+        }),
+      })
+
+      if (!updateResponse.ok) {
+        const error = await response.text()
+        console.log(`Note: Could not configure custom link: ${error}`)
+        // Don't fail the entire provisioning process for this optional feature
+        return
+      }
+    }
+  }
+
   async provision(): Promise<void> {
     console.log("🚀 Provisioning Zitadel...")
 
@@ -472,6 +516,9 @@ class ZitadelProvisioner {
 
       // Create application
       await this.createApplication(projectId)
+
+      // Configure external links pointing back to the app
+      await this.configureExternalLink()
 
       console.log("\n✅ Provisioning completed successfully!")
 
