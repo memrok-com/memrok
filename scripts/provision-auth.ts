@@ -228,8 +228,8 @@ class ZitadelProvisioner {
         postLogoutRedirectUris: this.config.redirectUris.map(uri => uri.replace(/\/auth\/callback$/, "/")),
         responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
         grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
-        appType: "OIDC_APP_TYPE_USER_AGENT",
-        authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",  // PKCE for SPAs
+        appType: "OIDC_APP_TYPE_WEB",
+        authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",  // PKCE for Web Apps
         version: "OIDC_VERSION_1_0",
         clockSkew: "5s",
         devMode: process.env.NODE_ENV === "development",
