@@ -41,7 +41,7 @@ This directory contains the Docker Compose configuration for deploying memrok wi
    bun run setup
    ```
    
-   The setup will output your OIDC configuration automatically.
+   The setup will automatically update your `.env` file with OIDC configuration.
 
 ## Automated Configuration
 
@@ -52,10 +52,11 @@ The deployment includes **fully automated Zitadel setup** with:
 - ✅ **Service account**: `memrok-provisioner` for automation
 - ✅ **Project**: "memrok" project automatically created
 - ✅ **OIDC Application**: User Agent (SPA) app with PKCE flow
+- ✅ **Automatic .env updates**: OIDC configuration written directly to your .env file
 - ✅ **User authorization**: Admin user granted access to project
 - ✅ **Development domains**: Configured for `*.dev.memrok.com`
 
-The `bun run auth` command handles all provisioning automatically and outputs the OIDC configuration needed for your `.env` file.
+The `bun run infra:provision` command handles all provisioning automatically and updates your `.env` file with the OIDC configuration.
 
 ### Login Credentials
 
@@ -83,7 +84,7 @@ The `bun run auth` command handles all provisioning automatically and outputs th
 - `docker-compose.dev.yml` - Development overrides (mkcert, dev domains)
 - `docker-compose.prod.yml` - Production overrides (app container)
 - `zitadel/init-steps.yaml` - Automated Zitadel configuration
-- `scripts/` - Utility scripts for certificates and config extraction
+- `scripts/` - Cross-platform TypeScript utilities for certificates and provisioning
 
 ## Environment Variables
 
@@ -120,8 +121,8 @@ bun run infra:logs      # View logs
 bun run infra:status    # Check status
 
 # Authentication & configuration
-bun run auth            # Provision Zitadel project and application
-bun run certs           # Generate development certificates
+bun run infra:provision # Provision Zitadel project and application
+bun run certs           # Generate development certificates (TypeScript)
 ```
 
 ## Troubleshooting
@@ -133,7 +134,7 @@ bun run certs           # Generate development certificates
 
 ### Authentication Issues  
 1. **Can't login**: Check `ZITADEL_ADMIN_EMAIL` and `ZITADEL_ADMIN_PASSWORD` in .env
-2. **Client not found**: Run `bun run auth` to provision the application
+2. **Client not found**: Run `bun run infra:provision` to provision the application
 3. **Domain issues**: Verify `MEMROK_AUTH_DOMAIN` matches your setup
 4. **Provisioning fails**: Wait a moment and retry - Zitadel may still be starting
 
@@ -143,7 +144,7 @@ bun run certs           # Generate development certificates
 bun run infra:stop
 docker volume rm memrok_zitadel-db-data memrok_zitadel-machinekey memrok_zitadel-pat
 bun run infra:start
-bun run auth  # Re-provision after restart
+bun run infra:provision  # Re-provision after restart
 ```
 
 ## Security Notes
