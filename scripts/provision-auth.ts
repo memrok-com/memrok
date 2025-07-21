@@ -17,7 +17,13 @@ interface ZitadelConfig {
   projectName: string
   applicationName: string
   redirectUris: string[]
+  postLogoutRedirectUris: string[]
 }
+
+// Constants - these are fixed for the memrok application
+const AUTH_CALLBACK_PATH = '/auth/zitadel/callback'
+const PROJECT_NAME = 'memrok'
+const APPLICATION_NAME = 'memrok Web App'
 
 class ZitadelProvisioner {
   private config: ZitadelConfig
@@ -29,23 +35,28 @@ class ZitadelProvisioner {
   }
 
   async loadServiceAccount(): Promise<void> {
-    try {
-      // Try to load machine key from Docker volume mount
-      const machineKeyPath = "/machinekey/memrok-provisioner.json"
-      const machineKeyContent = await readFile(machineKeyPath, "utf-8")
-      this.machineKey = JSON.parse(machineKeyContent)
-      // Service account loaded successfully
-    } catch (error) {
-      // Fallback to local development path
+    const paths = [
+      "/machinekey/memrok-provisioner.json", // Docker volume mount
+      join(process.cwd(), "deployment", "zitadel", "machinekey", "memrok-provisioner.json") // Local dev
+    ]
+
+    for (const path of paths) {
       try {
-        const localPath = join(process.cwd(), "deployment", "zitadel", "machinekey", "memrok-provisioner.json")
-        const machineKeyContent = await readFile(localPath, "utf-8")
+        const machineKeyContent = await readFile(path, "utf-8")
         this.machineKey = JSON.parse(machineKeyContent)
-        // Service account loaded from local path
-      } catch (localError) {
-        throw new Error("Failed to load machine key. Make sure Zitadel is running and the service account is created.")
+        // Service account loaded successfully
+        return
+      } catch (error) {
+        // Try next path
       }
     }
+
+    throw new Error(
+      "Failed to load machine key. Make sure:\n" +
+      "1. Zitadel is running (bun run infra:start)\n" +
+      "2. The service account 'memrok-provisioner' exists in Zitadel\n" +
+      "3. The machine key file exists in one of the expected locations"
+    )
   }
 
   async authenticate(): Promise<void> {
@@ -53,42 +64,30 @@ class ZitadelProvisioner {
       throw new Error("Machine key not loaded")
     }
 
-    // Create JWT for authentication
-    const header = {
-      alg: "RS256",
-      typ: "JWT",
-      kid: this.machineKey.keyId
-    }
+    // Note: JWT creation is prepared for future use when we implement
+    // proper JWT signing. For now, we'll use the PAT if available
+    const patPaths = [
+      "/pat/memrok-provisioner.pat", // Docker volume mount
+      join(process.cwd(), "deployment", "zitadel", "pat", "memrok-provisioner.pat") // Local dev
+    ]
 
-    const now = Math.floor(Date.now() / 1000)
-    const payload = {
-      iss: this.machineKey.userId,
-      sub: this.machineKey.userId,
-      aud: this.config.apiUrl,
-      iat: now,
-      exp: now + 3600, // 1 hour
-      scope: "openid profile email urn:zitadel:iam:org:project:id:zitadel:aud"
-    }
-
-    // For now, we'll use the PAT if available
-    try {
-      const patPath = "/pat/memrok-provisioner.pat"
-      const pat = await readFile(patPath, "utf-8")
-      this.accessToken = pat.trim()
-      // Using PAT for authentication
-      return
-    } catch (error) {
-      // Try local development path
+    for (const path of patPaths) {
       try {
-        const localPatPath = join(process.cwd(), "deployment", "zitadel", "pat", "memrok-provisioner.pat")
-        const pat = await readFile(localPatPath, "utf-8")
+        const pat = await readFile(path, "utf-8")
         this.accessToken = pat.trim()
-        // Using PAT from local path
+        // Using PAT for authentication
         return
-      } catch (localError) {
-        throw new Error("Failed to load PAT. Make sure Zitadel is running and the service account is created.")
+      } catch (error) {
+        // Try next path
       }
     }
+
+    throw new Error(
+      "Failed to load PAT. Make sure:\n" +
+      "1. The service account 'memrok-provisioner' exists in Zitadel\n" +
+      "2. A Personal Access Token has been created for the service account\n" +
+      "3. The PAT file exists in one of the expected locations"
+    )
   }
 
   async findProject(): Promise<string | null> {
@@ -115,8 +114,8 @@ class ZitadelProvisioner {
     })
 
     if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Failed to search for project: ${error}`)
+      const errorText = await response.text()
+      throw new Error(`Failed to search for project: ${response.status} ${response.statusText}\n${errorText}`)
     }
 
     const result = await response.json()
@@ -156,8 +155,8 @@ class ZitadelProvisioner {
     })
 
     if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Failed to create project: ${error}`)
+      const errorText = await response.text()
+      throw new Error(`Failed to create project: ${response.status} ${response.statusText}\n${errorText}`)
     }
 
     const result = await response.json()
@@ -189,8 +188,8 @@ class ZitadelProvisioner {
     })
 
     if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Failed to search for application: ${error}`)
+      const errorText = await response.text()
+      throw new Error(`Failed to search for application: ${response.status} ${response.statusText}\n${errorText}`)
     }
 
     const result = await response.json()
@@ -225,7 +224,7 @@ class ZitadelProvisioner {
       body: JSON.stringify({
         name: this.config.applicationName,
         redirectUris: this.config.redirectUris,
-        postLogoutRedirectUris: this.config.redirectUris.map(uri => uri.replace(/\/auth\/callback$/, "/")),
+        postLogoutRedirectUris: this.config.postLogoutRedirectUris,
         responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
         grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
         appType: "OIDC_APP_TYPE_WEB",
@@ -242,8 +241,8 @@ class ZitadelProvisioner {
     })
 
     if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Failed to create application: ${error}`)
+      const errorText = await response.text()
+      throw new Error(`Failed to create application: ${response.status} ${response.statusText}\n${errorText}`)
     }
 
     const result = await response.json()
@@ -256,7 +255,7 @@ class ZitadelProvisioner {
       projectId: projectId,
       applicationId: result.appId,
       redirectUri: this.config.redirectUris[0],
-      postLogoutRedirectUri: this.config.redirectUris[0].replace(/\/auth\/callback$/, "/")
+      postLogoutRedirectUri: this.config.postLogoutRedirectUris[0]
     }
 
     // Update .env file with the new credentials
@@ -266,13 +265,13 @@ class ZitadelProvisioner {
       NUXT_OIDC_REDIRECT_URI: credentials.redirectUri,
       NUXT_OIDC_POST_LOGOUT_REDIRECT_URI: credentials.postLogoutRedirectUri
     })
-    
+
     console.log("\n✅ Updated .env file with OIDC configuration")
   }
 
   async updateEnvFile(variables: Record<string, string>): Promise<void> {
     const envPath = join(process.cwd(), '.env')
-    
+
     // Read existing .env file
     let envContent = ''
     try {
@@ -280,7 +279,7 @@ class ZitadelProvisioner {
     } catch (error) {
       throw new Error('.env file not found. Please create one from .env.example first.')
     }
-    
+
     // Update or add each variable
     for (const [key, value] of Object.entries(variables)) {
       const regex = new RegExp(`^${key}=.*$`, 'm')
@@ -292,7 +291,7 @@ class ZitadelProvisioner {
         envContent += `\n${key}="${value}"`
       }
     }
-    
+
     // Write back to file
     await writeFile(envPath, envContent)
   }
@@ -483,22 +482,49 @@ class ZitadelProvisioner {
   }
 }
 
+// Helper function to construct URLs
+function buildUrls(appDomain: string) {
+  const appBaseUrl = `https://${appDomain}`
+  return {
+    redirectUri: `${appBaseUrl}${AUTH_CALLBACK_PATH}`,
+    postLogoutRedirectUri: appBaseUrl
+  }
+}
+
 // Main execution
 async function main() {
-  const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV
+  // Get required domains from environment variables
+  const authDomain = process.env.MEMROK_AUTH_DOMAIN
+  const appDomain = process.env.MEMROK_APP_DOMAIN
+
+  // Validate domains
+  if (!authDomain || !appDomain) {
+    throw new Error(
+      'Required environment variables missing:\n' +
+      '- MEMROK_AUTH_DOMAIN (e.g., auth.dev.memrok.com)\n' +
+      '- MEMROK_APP_DOMAIN (e.g., app.dev.memrok.com)'
+    )
+  }
+
+  // Build URLs using helper function
+  const urls = buildUrls(appDomain)
 
   const config: ZitadelConfig = {
-    apiUrl: isDev ? "https://auth.dev.memrok.com" : "https://auth.memrok.com",
-    domain: isDev ? "auth.dev.memrok.com" : "auth.memrok.com",
-    projectName: "memrok",
-    applicationName: "memrok Web App",
-    redirectUris: isDev
-      ? ["https://app.dev.memrok.com/auth/callback"]
-      : ["https://app.memrok.com/auth/callback"]
+    apiUrl: `https://${authDomain}`,
+    domain: authDomain,
+    projectName: PROJECT_NAME,
+    applicationName: APPLICATION_NAME,
+    redirectUris: [urls.redirectUri],
+    postLogoutRedirectUris: [urls.postLogoutRedirectUri]
   }
+
+  // Configuration is ready
 
   const provisioner = new ZitadelProvisioner(config)
   await provisioner.provision()
 }
 
-main().catch(console.error)
+main().catch((error) => {
+  console.error("❌ Error:", error.message)
+  process.exit(1)
+})
