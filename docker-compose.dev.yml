@@ -51,7 +51,7 @@ services:
       - "traefik.http.services.zitadel.loadbalancer.server.scheme=h2c"
       - "traefik.http.services.zitadel.loadbalancer.server.port=8080"
 
-  zitadel-db:
+  postgres:
     environment:
       POSTGRES_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
 
