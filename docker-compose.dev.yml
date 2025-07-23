@@ -3,7 +3,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8080:8080"  # Traefik dashboard for development
+      - "8080:8080"
     volumes:
       - ./traefik/certs:/certs:ro
       - ./traefik/dynamic:/etc/traefik/dynamic:ro
@@ -14,7 +14,6 @@ services:
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
-      - --entrypoints.traefik.address=:8080
       - --providers.docker=true
       - --providers.docker.endpoint=unix:///var/run/docker.sock
       - --providers.docker.exposedbydefault=false
@@ -25,36 +24,23 @@ services:
       - --api.insecure=true
       - --log.level=INFO
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`proxy.dev.memrok.com`)"
+      - "traefik.http.routers.traefik.rule=Host(`${MEMROK_PROXY_DOMAIN}`)"
       - "traefik.http.routers.traefik.entrypoints=websecure"
       - "traefik.http.routers.traefik.tls=true"
       - "traefik.http.routers.traefik.service=api@internal"
 
   zitadel:
     volumes:
-      - ./zitadel/init-steps.yaml:/config/init-steps.yaml:ro
       - ./zitadel/machinekey:/machinekey
       - ./zitadel/pat:/pat
     environment:
-      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_PASSWORD}
-      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
-      ZITADEL_EXTERNALSECURE: true
-      ZITADEL_EXTERNALDOMAIN: ${MEMROK_AUTH_DOMAIN}
-      ZITADEL_EXTERNALPORT: 443
       ZITADEL_TLS_ENABLED: false
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.zitadel.rule=Host(`${MEMROK_AUTH_DOMAIN}`)"
-      - "traefik.http.routers.zitadel.entrypoints=websecure"
-      - "traefik.http.routers.zitadel.tls=true"
       - "traefik.http.services.zitadel.loadbalancer.server.scheme=h2c"
-      - "traefik.http.services.zitadel.loadbalancer.server.port=8080"
 
-  zitadel-db:
-    environment:
-      POSTGRES_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
-
+  postgres:
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
 
 networks:
   memrok:
