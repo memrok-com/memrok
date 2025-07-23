@@ -101,10 +101,12 @@ services:
     image: postgres:17-alpine
     container_name: memrok-postgres
     environment:
-      PGUSER: postgres
-      POSTGRES_PASSWORD: ${MEMROK_DB_ADMIN_PASSWORD}
-      POSTGRES_DB: memrok
-      # Zitadel database variables for init script
+      # Primary memrok user (PostgreSQL native creation)
+      POSTGRES_USER: ${MEMROK_DB_USER}
+      POSTGRES_PASSWORD: ${MEMROK_DB_PASSWORD}
+      POSTGRES_DB: ${MEMROK_DB_NAME}
+      # Variables for init script
+      MEMROK_DB_ADMIN_PASSWORD: ${MEMROK_DB_ADMIN_PASSWORD}
       ZITADEL_DB_USER: zitadel
       ZITADEL_DB_PASSWORD: ${ZITADEL_DB_PASSWORD}
     volumes:
@@ -113,7 +115,7 @@ services:
     networks:
       - memrok
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready", "-d", "memrok", "-U", "postgres" ]
+      test: [ "CMD-SHELL", "pg_isready", "-d", "${MEMROK_DB_NAME}", "-U", "${MEMROK_DB_USER}" ]
       interval: 10s
       timeout: 30s
       retries: 5

@@ -1,10 +1,13 @@
 #!/bin/bash
 set -e
 
-# memrok is the default database created by POSTGRES_DB
-# This script creates additional databases and users
+# memrok database and user are created automatically by PostgreSQL via POSTGRES_USER/POSTGRES_DB
+# This script creates the additional zitadel database and user
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
+# Set postgres superuser password (required for creating additional databases)
+export PGPASSWORD="$MEMROK_DB_ADMIN_PASSWORD"
+
+psql -v ON_ERROR_STOP=1 --username postgres <<-EOSQL
     -- Create zitadel database for authentication service
     SELECT 'CREATE DATABASE zitadel'
     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'zitadel')\gexec
