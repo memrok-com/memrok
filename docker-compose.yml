@@ -25,10 +25,6 @@ services:
       - --log.level=WARN
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`${MEMROK_PROXY_DOMAIN}`)"
-      - "traefik.http.routers.traefik.entrypoints=websecure"
-      - "traefik.http.routers.traefik.tls=true"
-      - "traefik.http.routers.traefik.service=api@internal"
     networks:
       - memrok
 
@@ -48,7 +44,7 @@ services:
       ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_PASSWORD}
       ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
       ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
-      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${MEMROK_DB_ADMIN_PASSWORD}
       ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
       ZITADEL_EXTERNALSECURE: true
       ZITADEL_EXTERNALDOMAIN: ${MEMROK_AUTH_DOMAIN}
@@ -73,14 +69,14 @@ services:
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: false
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PREFERREDLANGUAGE: en
       # Branding Configuration
-      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_PRIMARYCOLOR: "#615fff" # indigo-500 (OKLCH)
-      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_BACKGROUNDCOLOR: "#f5f5f4" # stone-100 (OKLCH)
-      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_WARNCOLOR: "#ff2056" # rose-500 (OKLCH)
-      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_FONTCOLOR: "#1c1917" # stone-900 (OKLCH)
-      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_PRIMARYCOLORDARK: "#7c86ff" # indigo-400 (OKLCH dark variant)
-      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_BACKGROUNDCOLORDARK: "#1c1917" # stone-900 (OKLCH dark variant)
-      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_WARNCOLORDARK: "#ff2056" # rose-400 (OKLCH)
-      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_FONTCOLORDARK: "#f5f5f4" # stone-100 (OKLCH - background colors flipped)
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_PRIMARYCOLOR: "#615fff" # indigo-500
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_BACKGROUNDCOLOR: "#f5f5f4" # stone-100
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_WARNCOLOR: "#ff2056" # rose-500
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_FONTCOLOR: "#1c1917" # stone-900
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_PRIMARYCOLORDARK: "#7c86ff" # indigo-400
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_BACKGROUNDCOLORDARK: "#1c1917" # stone-900
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_WARNCOLORDARK: "#ff2056" # rose-400
+      ZITADEL_DEFAULTINSTANCE_LABELPOLICY_FONTCOLORDARK: "#f5f5f4" # stone-100
       ZITADEL_DEFAULTINSTANCE_LABELPOLICY_HIDELOGINNAMESUFFIX: false # Allow users with different email domains
       ZITADEL_DEFAULTINSTANCE_LABELPOLICY_ERRORMSGPOPUP: false
       ZITADEL_DEFAULTINSTANCE_LABELPOLICY_DISABLEWATERMARK: false # Keep Zitadel attribution
@@ -106,18 +102,18 @@ services:
     container_name: memrok-postgres
     environment:
       PGUSER: postgres
-      POSTGRES_PASSWORD: ${ZITADEL_DB_ADMIN_PASSWORD}
-      POSTGRES_DB: zitadel
-      # memrok database variables for init script
-      MEMROK_DB_USER: ${MEMROK_DB_USER}
-      MEMROK_DB_PASSWORD: ${MEMROK_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${MEMROK_DB_ADMIN_PASSWORD}
+      POSTGRES_DB: memrok
+      # Zitadel database variables for init script
+      ZITADEL_DB_USER: zitadel
+      ZITADEL_DB_PASSWORD: ${ZITADEL_DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init-db.sh:/docker-entrypoint-initdb.d/20-init-memrok.sh:ro
+      - ./postgres/init-db.sh:/docker-entrypoint-initdb.d/20-init-databases.sh:ro
     networks:
       - memrok
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready", "-d", "zitadel", "-U", "postgres" ]
+      test: [ "CMD-SHELL", "pg_isready", "-d", "memrok", "-U", "postgres" ]
       interval: 10s
       timeout: 30s
       retries: 5
