@@ -101,12 +101,12 @@ services:
     image: postgres:17-alpine
     container_name: memrok-postgres
     environment:
-      # Primary memrok user (PostgreSQL native creation)
+      # Primary memrok database (PostgreSQL native creation)
       POSTGRES_USER: ${MEMROK_DB_USER}
       POSTGRES_PASSWORD: ${MEMROK_DB_PASSWORD}
       POSTGRES_DB: ${MEMROK_DB_NAME}
-      # Variables for init script
-      MEMROK_DB_ADMIN_PASSWORD: ${MEMROK_DB_ADMIN_PASSWORD}
+      # Variables for init script (admin user and zitadel)
+      POSTGRES_ADMIN_PASSWORD: ${MEMROK_DB_ADMIN_PASSWORD}
       ZITADEL_DB_USER: zitadel
       ZITADEL_DB_PASSWORD: ${ZITADEL_DB_PASSWORD}
     volumes:

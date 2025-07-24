@@ -2,12 +2,19 @@
 set -e
 
 # memrok database and user are created automatically by PostgreSQL via POSTGRES_USER/POSTGRES_DB
-# This script creates the additional zitadel database and user
+# This script creates the postgres superuser (for Zitadel admin operations) and zitadel database
 
-# Set postgres superuser password (required for creating additional databases)
-export PGPASSWORD="$MEMROK_DB_ADMIN_PASSWORD"
+# Create postgres superuser with admin password
+psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER}" --dbname="${POSTGRES_DB}" <<-EOSQL
+    -- Create postgres superuser for Zitadel admin operations
+    DO \$\$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'postgres') THEN
+            CREATE USER postgres WITH SUPERUSER PASSWORD '${POSTGRES_ADMIN_PASSWORD}';
+        END IF;
+    END
+    \$\$;
 
-psql -v ON_ERROR_STOP=1 --username postgres <<-EOSQL
     -- Create zitadel database for authentication service
     SELECT 'CREATE DATABASE zitadel'
     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'zitadel')\gexec
@@ -25,4 +32,4 @@ psql -v ON_ERROR_STOP=1 --username postgres <<-EOSQL
     GRANT ALL PRIVILEGES ON DATABASE zitadel TO ${ZITADEL_DB_USER};
 EOSQL
 
-echo "Additional databases initialized (zitadel)"
+echo "Additional databases initialized (postgres superuser, zitadel)"
