@@ -2,7 +2,6 @@
 
 import { readFile, writeFile } from "fs/promises"
 import { join } from "path"
-import { $ } from "bun"
 
 interface MachineKey {
   type: string
@@ -21,9 +20,9 @@ interface ZitadelConfig {
 }
 
 // Constants - these are fixed for the memrok application
-const AUTH_CALLBACK_PATH = '/auth/zitadel/callback'
-const PROJECT_NAME = 'memrok'
-const APPLICATION_NAME = 'memrok Web App'
+const AUTH_CALLBACK_PATH = "/auth/zitadel/callback"
+const PROJECT_NAME = "memrok"
+const APPLICATION_NAME = "memrok Web App"
 
 class ZitadelProvisioner {
   private config: ZitadelConfig
@@ -37,7 +36,13 @@ class ZitadelProvisioner {
   async loadServiceAccount(): Promise<void> {
     const paths = [
       "/machinekey/memrok-provisioner.json", // Docker volume mount
-      join(process.cwd(), "deployment", "zitadel", "machinekey", "memrok-provisioner.json") // Local dev
+      join(
+        process.cwd(),
+        "deployment",
+        "zitadel",
+        "machinekey",
+        "memrok-provisioner.json"
+      ), // Local dev
     ]
 
     for (const path of paths) {
@@ -53,9 +58,9 @@ class ZitadelProvisioner {
 
     throw new Error(
       "Failed to load machine key. Make sure:\n" +
-      "1. Zitadel is running (bun run infra:start)\n" +
-      "2. The service account 'memrok-provisioner' exists in Zitadel\n" +
-      "3. The machine key file exists in one of the expected locations"
+        "1. Zitadel is running (bun run infra:start)\n" +
+        "2. The service account 'memrok-provisioner' exists in Zitadel\n" +
+        "3. The machine key file exists in one of the expected locations"
     )
   }
 
@@ -68,7 +73,13 @@ class ZitadelProvisioner {
     // proper JWT signing. For now, we'll use the PAT if available
     const patPaths = [
       "/pat/memrok-provisioner.pat", // Docker volume mount
-      join(process.cwd(), "deployment", "zitadel", "pat", "memrok-provisioner.pat") // Local dev
+      join(
+        process.cwd(),
+        "deployment",
+        "zitadel",
+        "pat",
+        "memrok-provisioner.pat"
+      ), // Local dev
     ]
 
     for (const path of patPaths) {
@@ -84,9 +95,9 @@ class ZitadelProvisioner {
 
     throw new Error(
       "Failed to load PAT. Make sure:\n" +
-      "1. The service account 'memrok-provisioner' exists in Zitadel\n" +
-      "2. A Personal Access Token has been created for the service account\n" +
-      "3. The PAT file exists in one of the expected locations"
+        "1. The service account 'memrok-provisioner' exists in Zitadel\n" +
+        "2. A Personal Access Token has been created for the service account\n" +
+        "3. The PAT file exists in one of the expected locations"
     )
   }
 
@@ -95,27 +106,32 @@ class ZitadelProvisioner {
       throw new Error("Not authenticated")
     }
 
-    const response = await fetch(`${this.config.apiUrl}/management/v1/projects/_search`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        queries: [
-          {
-            nameQuery: {
-              name: this.config.projectName,
-              method: "TEXT_QUERY_METHOD_EQUALS"
-            }
-          }
-        ]
-      }),
-    })
+    const response = await fetch(
+      `${this.config.apiUrl}/management/v1/projects/_search`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          queries: [
+            {
+              nameQuery: {
+                name: this.config.projectName,
+                method: "TEXT_QUERY_METHOD_EQUALS",
+              },
+            },
+          ],
+        }),
+      }
+    )
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`Failed to search for project: ${response.status} ${response.statusText}\n${errorText}`)
+      throw new Error(
+        `Failed to search for project: ${response.status} ${response.statusText}\n${errorText}`
+      )
     }
 
     const result = await response.json()
@@ -139,24 +155,30 @@ class ZitadelProvisioner {
       return existingProjectId
     }
 
-    const response = await fetch(`${this.config.apiUrl}/management/v1/projects`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: this.config.projectName,
-        projectRoleAssertion: true,
-        projectRoleCheck: true,
-        hasProjectCheck: true,
-        privateLabelingSetting: "PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY"
-      }),
-    })
+    const response = await fetch(
+      `${this.config.apiUrl}/management/v1/projects`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: this.config.projectName,
+          projectRoleAssertion: true,
+          projectRoleCheck: true,
+          hasProjectCheck: true,
+          privateLabelingSetting:
+            "PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY",
+        }),
+      }
+    )
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`Failed to create project: ${response.status} ${response.statusText}\n${errorText}`)
+      throw new Error(
+        `Failed to create project: ${response.status} ${response.statusText}\n${errorText}`
+      )
     }
 
     const result = await response.json()
@@ -169,27 +191,32 @@ class ZitadelProvisioner {
       throw new Error("Not authenticated")
     }
 
-    const response = await fetch(`${this.config.apiUrl}/management/v1/projects/${projectId}/apps/_search`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        queries: [
-          {
-            nameQuery: {
-              name: this.config.applicationName,
-              method: "TEXT_QUERY_METHOD_EQUALS"
-            }
-          }
-        ]
-      }),
-    })
+    const response = await fetch(
+      `${this.config.apiUrl}/management/v1/projects/${projectId}/apps/_search`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          queries: [
+            {
+              nameQuery: {
+                name: this.config.applicationName,
+                method: "TEXT_QUERY_METHOD_EQUALS",
+              },
+            },
+          ],
+        }),
+      }
+    )
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`Failed to search for application: ${response.status} ${response.statusText}\n${errorText}`)
+      throw new Error(
+        `Failed to search for application: ${response.status} ${response.statusText}\n${errorText}`
+      )
     }
 
     const result = await response.json()
@@ -210,39 +237,49 @@ class ZitadelProvisioner {
     // Check if application already exists
     const existingApp = await this.findApplication(projectId)
     if (existingApp) {
-      console.log(`Note: Using existing application. Delete from Zitadel console to generate new credentials.`)
+      console.log(
+        `Note: Using existing application. Delete from Zitadel console to generate new credentials.`
+      )
       return
     }
 
     // Create OIDC Web Application
-    const response = await fetch(`${this.config.apiUrl}/management/v1/projects/${projectId}/apps/oidc`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: this.config.applicationName,
-        redirectUris: this.config.redirectUris,
-        postLogoutRedirectUris: this.config.postLogoutRedirectUris,
-        responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-        grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
-        appType: "OIDC_APP_TYPE_WEB",
-        authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",  // PKCE for Web Apps
-        version: "OIDC_VERSION_1_0",
-        clockSkew: "5s",
-        devMode: process.env.NODE_ENV === "development",
-        accessTokenType: "OIDC_ACCESS_TOKEN_TYPE_JWT",
-        accessTokenRoleAssertion: true,
-        idTokenRoleAssertion: true,
-        idTokenUserInfoAssertion: true,
-        additionalOrigins: []
-      }),
-    })
+    const response = await fetch(
+      `${this.config.apiUrl}/management/v1/projects/${projectId}/apps/oidc`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: this.config.applicationName,
+          redirectUris: this.config.redirectUris,
+          postLogoutRedirectUris: this.config.postLogoutRedirectUris,
+          responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+          grantTypes: [
+            "OIDC_GRANT_TYPE_AUTHORIZATION_CODE",
+            "OIDC_GRANT_TYPE_REFRESH_TOKEN",
+          ],
+          appType: "OIDC_APP_TYPE_WEB",
+          authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE", // PKCE for Web Apps
+          version: "OIDC_VERSION_1_0",
+          clockSkew: "5s",
+          devMode: process.env.NODE_ENV === "development",
+          accessTokenType: "OIDC_ACCESS_TOKEN_TYPE_JWT",
+          accessTokenRoleAssertion: true,
+          idTokenRoleAssertion: true,
+          idTokenUserInfoAssertion: true,
+          additionalOrigins: [],
+        }),
+      }
+    )
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`Failed to create application: ${response.status} ${response.statusText}\n${errorText}`)
+      throw new Error(
+        `Failed to create application: ${response.status} ${response.statusText}\n${errorText}`
+      )
     }
 
     const result = await response.json()
@@ -255,7 +292,7 @@ class ZitadelProvisioner {
       projectId: projectId,
       applicationId: result.appId,
       redirectUri: this.config.redirectUris[0],
-      postLogoutRedirectUri: this.config.postLogoutRedirectUris[0]
+      postLogoutRedirectUri: this.config.postLogoutRedirectUris[0],
     }
 
     // Update .env file with the new credentials
@@ -263,26 +300,28 @@ class ZitadelProvisioner {
       NUXT_OIDC_CLIENT_ID: credentials.clientId,
       NUXT_OIDC_ISSUER: credentials.issuer,
       NUXT_OIDC_REDIRECT_URI: credentials.redirectUri,
-      NUXT_OIDC_POST_LOGOUT_REDIRECT_URI: credentials.postLogoutRedirectUri
+      NUXT_OIDC_POST_LOGOUT_REDIRECT_URI: credentials.postLogoutRedirectUri,
     })
 
     console.log("\n✅ Updated .env file with OIDC configuration")
   }
 
   async updateEnvFile(variables: Record<string, string>): Promise<void> {
-    const envPath = join(process.cwd(), '.env')
+    const envPath = join(process.cwd(), ".env")
 
     // Read existing .env file
-    let envContent = ''
+    let envContent = ""
     try {
-      envContent = await readFile(envPath, 'utf-8')
+      envContent = await readFile(envPath, "utf-8")
     } catch (error) {
-      throw new Error('.env file not found. Please create one from .env.example first.')
+      throw new Error(
+        ".env file not found. Please create one from .env.example first."
+      )
     }
 
     // Update or add each variable
     for (const [key, value] of Object.entries(variables)) {
-      const regex = new RegExp(`^${key}=.*$`, 'm')
+      const regex = new RegExp(`^${key}=.*$`, "m")
       if (regex.test(envContent)) {
         // Update existing variable
         envContent = envContent.replace(regex, `${key}="${value}"`)
@@ -317,7 +356,7 @@ class ZitadelProvisioner {
       }
 
       process.stdout.write(".")
-      await new Promise(resolve => setTimeout(resolve, retryInterval))
+      await new Promise((resolve) => setTimeout(resolve, retryInterval))
     }
 
     console.log("\n⏳ Waiting for API to be fully ready...")
@@ -329,17 +368,20 @@ class ZitadelProvisioner {
     for (let i = 0; i < maxRetries; i++) {
       try {
         // Test the API by trying to list projects (lightweight call)
-        const response = await fetch(`${this.config.apiUrl}/management/v1/projects/_search`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${this.accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            queries: [],
-            limit: 1
-          }),
-        })
+        const response = await fetch(
+          `${this.config.apiUrl}/management/v1/projects/_search`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              queries: [],
+              limit: 1,
+            }),
+          }
+        )
 
         if (response.ok) {
           console.log(" Ready!")
@@ -350,7 +392,7 @@ class ZitadelProvisioner {
       }
 
       process.stdout.write(".")
-      await new Promise(resolve => setTimeout(resolve, retryInterval))
+      await new Promise((resolve) => setTimeout(resolve, retryInterval))
     }
 
     throw new Error("Timeout waiting for Zitadel API to be ready")
@@ -364,23 +406,26 @@ class ZitadelProvisioner {
     // Search for the admin user by email
     const adminEmail = process.env.ZITADEL_ADMIN_EMAIL || "admin@memrok.com"
 
-    const response = await fetch(`${this.config.apiUrl}/management/v1/users/_search`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        queries: [
-          {
-            emailQuery: {
-              emailAddress: adminEmail,
-              method: "TEXT_QUERY_METHOD_EQUALS"
-            }
-          }
-        ]
-      }),
-    })
+    const response = await fetch(
+      `${this.config.apiUrl}/management/v1/users/_search`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          queries: [
+            {
+              emailQuery: {
+                emailAddress: adminEmail,
+                method: "TEXT_QUERY_METHOD_EQUALS",
+              },
+            },
+          ],
+        }),
+      }
+    )
 
     if (!response.ok) {
       const error = await response.text()
@@ -403,27 +448,30 @@ class ZitadelProvisioner {
     }
 
     // Check if user grant already exists
-    const searchResponse = await fetch(`${this.config.apiUrl}/management/v1/users/grants/_search`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        queries: [
-          {
-            projectIdQuery: {
-              projectId: projectId
-            }
-          },
-          {
-            userIdQuery: {
-              userId: userId
-            }
-          }
-        ]
-      }),
-    })
+    const searchResponse = await fetch(
+      `${this.config.apiUrl}/management/v1/users/grants/_search`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          queries: [
+            {
+              projectIdQuery: {
+                projectId: projectId,
+              },
+            },
+            {
+              userIdQuery: {
+                userId: userId,
+              },
+            },
+          ],
+        }),
+      }
+    )
 
     if (searchResponse.ok) {
       const searchResult = await searchResponse.json()
@@ -434,17 +482,20 @@ class ZitadelProvisioner {
     }
 
     // Create user grant (authorization) for the admin user
-    const response = await fetch(`${this.config.apiUrl}/management/v1/users/${userId}/grants`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        projectId: projectId,
-        roleKeys: [] // Empty array means grant access without specific roles
-      }),
-    })
+    const response = await fetch(
+      `${this.config.apiUrl}/management/v1/users/${userId}/grants`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId: projectId,
+          roleKeys: [], // Empty array means grant access without specific roles
+        }),
+      }
+    )
 
     if (!response.ok) {
       const error = await response.text()
@@ -462,32 +513,37 @@ class ZitadelProvisioner {
     // Configure custom link pointing back to the memrok app domain
     const appBaseUrl = `https://${process.env.MEMROK_APP_DOMAIN}`
 
-    const response = await fetch(`${this.config.apiUrl}/management/v1/policies/privacy`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        docsLink: appBaseUrl,
-        customLink: appBaseUrl,
-        customLinkText: "Back to memrok"
-      }),
-    })
-
-    if (!response.ok) {
-      // Check if it's already configured by trying to update instead
-      const updateResponse = await fetch(`${this.config.apiUrl}/management/v1/policies/privacy`, {
-        method: "PUT",
+    const response = await fetch(
+      `${this.config.apiUrl}/management/v1/policies/privacy`,
+      {
+        method: "POST",
         headers: {
-          "Authorization": `Bearer ${this.accessToken}`,
+          Authorization: `Bearer ${this.accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           customLink: appBaseUrl,
-          customLinkText: "Back to memrok"
+          customLinkText: "memrok",
         }),
-      })
+      }
+    )
+
+    if (!response.ok) {
+      // Check if it's already configured by trying to update instead
+      const updateResponse = await fetch(
+        `${this.config.apiUrl}/management/v1/policies/privacy`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            customLink: appBaseUrl,
+            customLinkText: "memrok",
+          }),
+        }
+      )
 
       if (!updateResponse.ok) {
         const error = await response.text()
@@ -521,7 +577,6 @@ class ZitadelProvisioner {
       await this.configureExternalLink()
 
       console.log("\n✅ Provisioning completed successfully!")
-
     } catch (error) {
       console.error("\n❌ Provisioning failed:", error)
       process.exit(1)
@@ -534,7 +589,7 @@ function buildUrls(appDomain: string) {
   const appBaseUrl = `https://${appDomain}`
   return {
     redirectUri: `${appBaseUrl}${AUTH_CALLBACK_PATH}`,
-    postLogoutRedirectUri: appBaseUrl
+    postLogoutRedirectUri: appBaseUrl,
   }
 }
 
@@ -547,9 +602,9 @@ async function main() {
   // Validate domains
   if (!authDomain || !appDomain) {
     throw new Error(
-      'Required environment variables missing:\n' +
-      '- MEMROK_AUTH_DOMAIN (e.g., auth.dev.memrok.com)\n' +
-      '- MEMROK_APP_DOMAIN (e.g., app.dev.memrok.com)'
+      "Required environment variables missing:\n" +
+        "- MEMROK_AUTH_DOMAIN (e.g., auth.dev.memrok.com)\n" +
+        "- MEMROK_APP_DOMAIN (e.g., app.dev.memrok.com)"
     )
   }
 
@@ -562,7 +617,7 @@ async function main() {
     projectName: PROJECT_NAME,
     applicationName: APPLICATION_NAME,
     redirectUris: [urls.redirectUri],
-    postLogoutRedirectUris: [urls.postLogoutRedirectUri]
+    postLogoutRedirectUris: [urls.postLogoutRedirectUri],
   }
 
   // Configuration is ready
