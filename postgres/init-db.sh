@@ -6,15 +6,6 @@ set -e
 
 # Create postgres superuser with admin password
 psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER}" --dbname="${POSTGRES_DB}" <<-EOSQL
-    -- Create postgres superuser for Zitadel admin operations
-    DO \$\$
-    BEGIN
-        IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'postgres') THEN
-            CREATE USER postgres WITH SUPERUSER PASSWORD '${POSTGRES_ADMIN_PASSWORD}';
-        END IF;
-    END
-    \$\$;
-
     -- Create zitadel database for authentication service
     SELECT 'CREATE DATABASE zitadel'
     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'zitadel')\gexec

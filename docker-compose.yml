@@ -43,7 +43,7 @@ services:
       ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
       ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_PASSWORD}
       ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
-      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: ${MEMROK_DB_USER}
       ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${MEMROK_DB_ADMIN_PASSWORD}
       ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
       ZITADEL_EXTERNALSECURE: true
@@ -105,6 +105,7 @@ services:
       POSTGRES_USER: ${MEMROK_DB_USER}
       POSTGRES_PASSWORD: ${MEMROK_DB_PASSWORD}
       POSTGRES_DB: ${MEMROK_DB_NAME}
+      PGUSER: ${MEMROK_DB_USER}
       # Variables for init script (admin user and zitadel)
       POSTGRES_ADMIN_PASSWORD: ${MEMROK_DB_ADMIN_PASSWORD}
       ZITADEL_DB_USER: zitadel
@@ -115,7 +116,7 @@ services:
     networks:
       - memrok
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready", "-d", "${MEMROK_DB_NAME}", "-U", "${MEMROK_DB_USER}" ]
+      test: [ "CMD-SHELL", "pg_isready" ]
       interval: 10s
       timeout: 30s
       retries: 5
