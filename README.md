@@ -1,3 +1,5 @@
+![memrok logo](app/assets/logo/2025-memrok-logo.svg)
+
 # Deploy memrok
 
 Self-host memrok on your own infrastructure to keep your AI assistant memories private and secure.
@@ -11,12 +13,14 @@ Self-host memrok on your own infrastructure to keep your AI assistant memories p
 ## Installation
 
 1. **Download the deployment configuration**
+
    ```bash
    git clone https://github.com/memrok-com/memrok.git
    cd memrok
    ```
 
 2. **Configure your environment**
+
    ```bash
    cp .env.example .env
    ```
@@ -33,7 +37,7 @@ Visit your configured domain to access memrok!
 ## What Gets Deployed
 
 - **memrok**: Main application
-- **Zitadel**: Authentication service  
+- **Zitadel**: Authentication service
 - **PostgreSQL**: Database for memories and user data
 - **Traefik**: Reverse proxy with automatic SSL certificates
 
@@ -42,6 +46,7 @@ All services run in Docker containers and communicate over a private network.
 ## Management
 
 ### Update to latest version
+
 ```bash
 git pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
@@ -49,6 +54,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 ### Stop memrok
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml down
 ```
