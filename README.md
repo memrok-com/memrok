@@ -1,4 +1,4 @@
-![memrok logo](app/assets/logo/2025-memrok-logo.svg)
+![memrok logo](https://raw.githubusercontent.com/memrok-com/app/refs/heads/main/app/assets/logo/2025-memrok-logo.svg)
 
 # Deploy memrok
 
