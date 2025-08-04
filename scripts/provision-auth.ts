@@ -297,10 +297,10 @@ class ZitadelProvisioner {
 
     // Update .env file with the new credentials
     await this.updateEnvFile({
-      NUXT_OIDC_CLIENT_ID: credentials.clientId,
-      NUXT_OIDC_ISSUER: credentials.issuer,
-      NUXT_OIDC_REDIRECT_URI: credentials.redirectUri,
-      NUXT_OIDC_POST_LOGOUT_REDIRECT_URI: credentials.postLogoutRedirectUri,
+      NUXT_OIDC_PROVIDERS_ZITADEL_CLIENT_ID: credentials.clientId,
+      NUXT_OIDC_PROVIDERS_ZITADEL_BASE_URL: credentials.issuer,
+      NUXT_OIDC_PROVIDERS_ZITADEL_REDIRECT_URI: credentials.redirectUri,
+      NUXT_OIDC_PROVIDERS_ZITADEL_LOGOUT_REDIRECT_URI: credentials.postLogoutRedirectUri,
     })
 
     console.log("\n✅ Updated .env file with OIDC configuration")
@@ -610,14 +610,18 @@ async function main() {
 
   // Build URLs using helper function
   const urls = buildUrls(appDomain)
+  
+  // Add test domain for Docker container testing
+  const testDomain = process.env.MEMROK_APP_TEST_DOMAIN || 'app-test.dev.memrok.com'
+  const testUrls = buildUrls(testDomain)
 
   const config: ZitadelConfig = {
     apiUrl: `https://${authDomain}`,
     domain: authDomain,
     projectName: PROJECT_NAME,
     applicationName: APPLICATION_NAME,
-    redirectUris: [urls.redirectUri],
-    postLogoutRedirectUris: [urls.postLogoutRedirectUri],
+    redirectUris: [urls.redirectUri, testUrls.redirectUri],
+    postLogoutRedirectUris: [urls.postLogoutRedirectUri, testUrls.postLogoutRedirectUri],
   }
 
   // Configuration is ready
