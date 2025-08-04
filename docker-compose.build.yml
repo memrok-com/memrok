@@ -1,0 +1,16 @@
+# Docker Compose override for building the memrok image locally
+# Usage: docker compose -f docker-compose.yml -f docker-compose.build.yml build memrok
+
+services:
+  memrok:
+    build:
+      context: ../ # Build from parent directory (app root)
+      dockerfile: Dockerfile
+      args:
+        MEMROK_VERSION: development-biuld
+        MEMROK_BUILD_YEAR: ${MEMROK_BUILD_YEAR:-2025}
+        NUXT_UI_PRO_LICENSE: ${NUXT_UI_PRO_LICENSE}
+    image: memrok/app:local
+    # Don't start the service when building
+    profiles:
+      - build-only
