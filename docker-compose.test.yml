@@ -1,0 +1,42 @@
+# Docker Compose override for testing the locally built memrok container
+# Integrates with the existing dev stack (shares Traefik, PostgreSQL, Zitadel)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.test.yml up -d memrok
+
+services:
+  memrok:
+    image: memrok/app:local
+    container_name: memrok-app-test
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development  # Use development mode for easier debugging
+      - DATABASE_URL=postgresql://${MEMROK_DB_USER}:${MEMROK_DB_PASSWORD}@postgres:5432/${MEMROK_DB_NAME}
+      - NUXT_OIDC_CLIENT_ID=${NUXT_OIDC_CLIENT_ID}
+      - NUXT_OIDC_ISSUER=${NUXT_OIDC_ISSUER}
+      - NUXT_OIDC_REDIRECT_URI=https://${MEMROK_APP_TEST_DOMAIN:-app-test.dev.memrok.com}/auth/zitadel/callback
+      - NUXT_OIDC_POST_LOGOUT_REDIRECT_URI=https://${MEMROK_APP_TEST_DOMAIN:-app-test.dev.memrok.com}
+      - NUXT_OIDC_AUTH_SESSION_SECRET=${NUXT_OIDC_AUTH_SESSION_SECRET}
+      - NUXT_OIDC_SESSION_SECRET=${NUXT_OIDC_SESSION_SECRET}
+      - NUXT_OIDC_TOKEN_KEY=${NUXT_OIDC_TOKEN_KEY}
+      - MEMROK_APP_DOMAIN=${MEMROK_APP_TEST_DOMAIN:-app-test.dev.memrok.com}
+      - MEMROK_AUTH_DOMAIN=${MEMROK_AUTH_DOMAIN}
+      - MEMROK_VERSION=local-test
+      - MEMROK_BUILD_YEAR=${MEMROK_BUILD_YEAR:-2025}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zitadel:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.memrok-test.rule=Host(`${MEMROK_APP_TEST_DOMAIN:-app-test.dev.memrok.com}`)"
+      - "traefik.http.routers.memrok-test.entrypoints=websecure"
+      - "traefik.http.routers.memrok-test.tls=true"
+      - "traefik.http.services.memrok-test.loadbalancer.server.port=3000"
+    networks:
+      - memrok

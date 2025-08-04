@@ -13,15 +13,51 @@ services:
       - "traefik.http.routers.zitadel.tls.certresolver=letsencrypt"
 
   memrok:
-    image: memrok/app:${MEMROK_VERSION:-latest}
+    image: ghcr.io/memrok-com/app:${MEMROK_VERSION:-latest}
     container_name: memrok-app
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - NUXT_OIDC_CLIENT_ID=${NUXT_OIDC_CLIENT_ID}
+      - NUXT_OIDC_ISSUER=${NUXT_OIDC_ISSUER}
+      - NUXT_OIDC_REDIRECT_URI=${NUXT_OIDC_REDIRECT_URI}
+      - NUXT_OIDC_POST_LOGOUT_REDIRECT_URI=${NUXT_OIDC_POST_LOGOUT_REDIRECT_URI}
+      - NUXT_OIDC_AUTH_SESSION_SECRET=${NUXT_OIDC_AUTH_SESSION_SECRET}
+      - NUXT_OIDC_SESSION_SECRET=${NUXT_OIDC_SESSION_SECRET}
+      - NUXT_OIDC_TOKEN_KEY=${NUXT_OIDC_TOKEN_KEY}
+      - MEMROK_APP_DOMAIN=${MEMROK_APP_DOMAIN}
+      - MEMROK_AUTH_DOMAIN=${MEMROK_AUTH_DOMAIN}
+      - MEMROK_VERSION=${MEMROK_VERSION}
+      - MEMROK_BUILD_YEAR=${MEMROK_BUILD_YEAR}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zitadel:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+      - /app/.nuxt:size=50M,mode=1777
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.memrok.rule=Host(`${MEMROK_APP_DOMAIN}`)"
       - "traefik.http.routers.memrok.entrypoints=websecure"
       - "traefik.http.routers.memrok.tls.certresolver=letsencrypt"
+      - "traefik.http.services.memrok.loadbalancer.server.port=3000"
     networks:
       - memrok
