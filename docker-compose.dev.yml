@@ -42,6 +42,21 @@ services:
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
 
+  qdrant:
+    ports:
+      - "${QDRANT_HOST_PORT:-6334}:6334"
+      - "${QDRANT_WEB_UI_PORT:-6333}:6333"
+    environment:
+      # Development mode - web UI enabled
+      QDRANT__WEB_UI__ENABLED: true
+      QDRANT__SERVICE__ENABLE_TLS: false
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qdrant.rule=Host(`${MEMROK_VECTORS_DOMAIN}`)"
+      - "traefik.http.routers.qdrant.entrypoints=websecure"
+      - "traefik.http.routers.qdrant.tls=true"
+      - "traefik.http.services.qdrant.loadbalancer.server.port=6333"
+
 networks:
   memrok:
     name: ${DOCKER_NETWORK:-memrok-dev}

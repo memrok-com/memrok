@@ -122,10 +122,27 @@ services:
       retries: 5
       start_period: 20s
 
+  qdrant:
+    restart: unless-stopped
+    image: qdrant/qdrant:v1.15.0
+    container_name: memrok-qdrant
+    environment:
+      # Security configuration
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+      QDRANT__WEB_UI__ENABLED: false
+      QDRANT__TELEMETRY_DISABLED: true
+      # Performance configuration
+      QDRANT__STORAGE__OPTIMIZERS__DEFAULT_SEGMENT_NUMBER: 4
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - memrok
+
 volumes:
   postgres-data:
   zitadel-machinekey:
   zitadel-pat:
+  qdrant-data:
 
 
 networks:
