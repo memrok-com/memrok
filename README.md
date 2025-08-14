@@ -49,7 +49,9 @@ memrok uses official pre-built images from GitHub Container Registry:
 
 - **Latest stable**: `ghcr.io/memrok-com/app:latest`
 - **Specific version**: `ghcr.io/memrok-com/app:v1.0.0`
-- **Multi-platform**: Supports both `linux/amd64` and `linux/arm64`
+- **Platform support**: 
+  - v0.1.0: `linux/amd64` and `linux/arm64`
+  - v0.2.0+: `linux/amd64` only (ARM64 returns in v1.0.0)
 
 Images are automatically built, signed, and scanned for vulnerabilities on each release.
 
