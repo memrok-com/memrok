@@ -6,11 +6,11 @@ services:
       - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=${DNS_PROVIDER}
       - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
     labels:
-      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - 'traefik.http.routers.traefik.tls.certresolver=letsencrypt'
 
   zitadel:
     labels:
-      - "traefik.http.routers.zitadel.tls.certresolver=letsencrypt"
+      - 'traefik.http.routers.zitadel.tls.certresolver=letsencrypt'
 
   memrok:
     image: ghcr.io/memrok-com/app:${MEMROK_VERSION:-latest}
@@ -41,7 +41,7 @@ services:
       zitadel:
         condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -59,10 +59,10 @@ services:
         reservations:
           memory: 256M
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.memrok.rule=Host(`${MEMROK_APP_DOMAIN}`)"
-      - "traefik.http.routers.memrok.entrypoints=websecure"
-      - "traefik.http.routers.memrok.tls.certresolver=letsencrypt"
-      - "traefik.http.services.memrok.loadbalancer.server.port=3000"
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.memrok.rule=Host(`${MEMROK_APP_DOMAIN}`)'
+      - 'traefik.http.routers.memrok.entrypoints=websecure'
+      - 'traefik.http.routers.memrok.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.memrok.loadbalancer.server.port=3000'
     networks:
       - memrok

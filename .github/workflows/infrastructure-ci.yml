@@ -27,31 +27,31 @@ jobs:
       - name: 📋 Validate base docker-compose.yml
         run: |
           echo "🔍 Validating base configuration..."
-          docker-compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.yml config --quiet
           echo "✅ Base configuration is valid"
 
       - name: 🔧 Validate development configuration
         run: |
           echo "🔍 Validating development configuration..."
-          docker-compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
           echo "✅ Development configuration is valid"
 
       - name: 🚀 Validate production configuration
         run: |
           echo "🔍 Validating production configuration..."
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
           echo "✅ Production configuration is valid"
 
       - name: 🧪 Validate test configuration
         run: |
           echo "🔍 Validating test configuration..."
-          docker-compose -f docker-compose.yml -f docker-compose.test.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.test.yml config --quiet
           echo "✅ Test configuration is valid"
 
       - name: 🏗️ Validate build configuration
         run: |
           echo "🔍 Validating build configuration..."
-          docker-compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
           echo "✅ Build configuration is valid"
 
   lint-configs:
@@ -159,7 +159,7 @@ jobs:
           echo "🔍 Validating Docker networks..."
           
           # Check that all services define proper networks
-          docker-compose -f docker-compose.yml config | grep -A 1000 "networks:" | head -20
+          docker compose -f docker-compose.yml config | grep -A 1000 "networks:" | head -20
           
           echo "✅ Network configuration is valid"
 
@@ -168,7 +168,7 @@ jobs:
           echo "🔍 Validating Docker volumes..."
           
           # Check volume definitions
-          docker-compose -f docker-compose.yml config | grep -A 1000 "volumes:" | head -20
+          docker compose -f docker-compose.yml config | grep -A 1000 "volumes:" | head -20
           
           echo "✅ Volume configuration is valid"
 
@@ -206,7 +206,7 @@ jobs:
           echo "🔍 Testing service dependency resolution..."
           
           # Parse and validate service dependencies without starting services
-          docker-compose -f docker-compose.yml -f docker-compose.test.yml config > /tmp/composed.yml
+          docker compose -f docker-compose.yml -f docker-compose.test.yml config > /tmp/composed.yml
           
           # Check that all depends_on references exist
           python3 -c "
