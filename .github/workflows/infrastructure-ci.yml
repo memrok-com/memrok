@@ -254,7 +254,11 @@ jobs:
     needs: [validate-configs, lint-configs, security-scan, infrastructure-checks, integration-test]
     if: always()
     steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
       - name: 📊 Check all jobs status
+        id: check
         run: |
           echo "🔍 Checking all job results..."
           
@@ -265,10 +269,27 @@ jobs:
              [ "${{ needs.infrastructure-checks.result }}" != "success" ] || \
              [ "${{ needs.integration-test.result }}" != "success" ]; then
             echo "❌ One or more CI jobs failed"
+            echo "status=failure" >> $GITHUB_OUTPUT
             exit 1
           fi
           
           echo "✅ All infrastructure CI checks passed successfully!"
+          echo "status=success" >> $GITHUB_OUTPUT
+      
+      - name: 📝 Set commit status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ steps.check.outputs.status }}' || 'failure';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: status,
+              context: 'Infrastructure CI Success',
+              description: status === 'success' ? 'All checks passed' : 'Some checks failed'
+            });
 
   # Notify on failure (optional)
   notify-failure:
