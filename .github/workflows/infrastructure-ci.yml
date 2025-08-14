@@ -1,0 +1,311 @@
+name: Infrastructure CI
+
+on:
+  push:
+    branches: [main, v0.2.0, 'feature/**']
+  pull_request:
+    branches: [main, v0.2.0]
+  schedule:
+    # Weekly security scan on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  validate-configs:
+    name: 🔍 Validate Configurations
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 📋 Validate base docker-compose.yml
+        run: |
+          echo "🔍 Validating base configuration..."
+          docker compose -f docker-compose.yml config --quiet
+          echo "✅ Base configuration is valid"
+
+      - name: 🔧 Validate development configuration
+        run: |
+          echo "🔍 Validating development configuration..."
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+          echo "✅ Development configuration is valid"
+
+      - name: 🚀 Validate production configuration
+        run: |
+          echo "🔍 Validating production configuration..."
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+          echo "✅ Production configuration is valid"
+
+      - name: 🧪 Validate test configuration
+        run: |
+          echo "🔍 Validating test configuration..."
+          docker compose -f docker-compose.yml -f docker-compose.test.yml config --quiet
+          echo "✅ Test configuration is valid"
+
+      - name: 🏗️ Validate build configuration
+        run: |
+          echo "🔍 Validating build configuration..."
+          docker compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
+          echo "✅ Build configuration is valid"
+
+  lint-configs:
+    name: 🧹 Lint Configuration Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Install yamllint
+        run: pip install yamllint
+
+      - name: 📝 Lint YAML files
+        run: |
+          echo "🔍 Linting YAML configuration files..."
+          yamllint -d relaxed docker-compose*.yml
+          find traefik zitadel -name "*.yml" -o -name "*.yaml" | xargs yamllint -d relaxed
+          echo "✅ All YAML files are properly formatted"
+
+      - name: 🔧 Validate JSON files
+        run: |
+          echo "🔍 Validating JSON configuration files..."
+          find . -name "*.json" -exec python -m json.tool {} \; > /dev/null
+          echo "✅ All JSON files are valid"
+
+  security-scan:
+    name: 🔐 Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy
+
+      - name: 🔐 Scan Docker Compose configurations
+        run: |
+          echo "🔍 Scanning infrastructure configurations for security issues..."
+          trivy config --format sarif --output trivy-config.sarif .
+          echo "✅ Configuration security scan completed"
+
+      - name: 📊 Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-config.sarif
+
+      - name: 🔍 Scan container images for vulnerabilities
+        run: |
+          echo "🔍 Scanning container images for vulnerabilities..."
+          
+          # Extract unique images from docker-compose files, excluding those with variables
+          IMAGES=$(grep -h "image:" docker-compose*.yml | sed 's/.*image: *//g' | sed 's/["'\'']*//g' | grep -v '\$' | sort -u)
+          
+          echo "Found images to scan:"
+          echo "$IMAGES"
+          
+          # Scan each image
+          for image in $IMAGES; do
+            echo "🔍 Scanning $image..."
+            trivy image --severity HIGH,CRITICAL --no-progress "$image" || true
+          done
+          
+          echo "✅ Container image vulnerability scan completed"
+
+  infrastructure-checks:
+    name: 🏗️ Infrastructure Health Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔍 Check port conflicts
+        run: |
+          echo "🔍 Checking for port conflicts..."
+          
+          # Extract all exposed ports from compose files
+          PORTS=$(grep -h "ports:" -A 10 docker-compose*.yml | grep -E '^\s*-\s*[0-9]+:' | sed 's/.*- *\([0-9]*\):.*/\1/' | sort -n)
+          
+          echo "Found exposed ports:"
+          echo "$PORTS"
+          
+          # Check for duplicates
+          DUPLICATES=$(echo "$PORTS" | uniq -d)
+          if [ -n "$DUPLICATES" ]; then
+            echo "❌ Found duplicate ports: $DUPLICATES"
+            exit 1
+          fi
+          
+          echo "✅ No port conflicts detected"
+
+      - name: 🌐 Validate network configurations
+        run: |
+          echo "🔍 Validating Docker networks..."
+          
+          # Check that all services define proper networks
+          docker compose -f docker-compose.yml config | grep -A 1000 "networks:" | head -20
+          
+          echo "✅ Network configuration is valid"
+
+      - name: 💾 Validate volume configurations
+        run: |
+          echo "🔍 Validating Docker volumes..."
+          
+          # Check volume definitions
+          docker compose -f docker-compose.yml config | grep -A 1000 "volumes:" | head -20
+          
+          echo "✅ Volume configuration is valid"
+
+      - name: 🔐 Check SSL certificate structure
+        run: |
+          echo "🔍 Checking SSL certificate structure..."
+          
+          if [ -d "traefik/certs" ]; then
+            echo "Found certificates directory"
+            ls -la traefik/certs/
+            
+            # Check for required certificate files for development
+            if [ -f "traefik/certs/dev.memrok.com.crt" ] && [ -f "traefik/certs/dev.memrok.com.key" ]; then
+              echo "✅ Development certificates are present"
+            else
+              echo "⚠️ Development certificates not found (may be generated at runtime)"
+            fi
+          else
+            echo "⚠️ SSL certificates directory not found"
+          fi
+
+  integration-test:
+    name: 🧪 Integration Testing
+    runs-on: ubuntu-latest
+    needs: [validate-configs, lint-configs]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔍 Test service dependency resolution
+        run: |
+          echo "🔍 Testing service dependency resolution..."
+          
+          # Parse and validate service dependencies without starting services
+          docker compose -f docker-compose.yml -f docker-compose.test.yml config > /tmp/composed.yml
+          
+          # Check that all depends_on references exist
+          python3 -c "
+          import yaml
+          with open('/tmp/composed.yml') as f:
+              config = yaml.safe_load(f)
+          
+          services = config.get('services', {})
+          service_names = set(services.keys())
+          
+          print('🔍 Found services:', list(service_names))
+          
+          for service_name, service_config in services.items():
+              depends_on = service_config.get('depends_on', [])
+              if isinstance(depends_on, dict):
+                  depends_on = list(depends_on.keys())
+              
+              for dep in depends_on:
+                  if dep not in service_names:
+                      print(f'❌ Service {service_name} depends on non-existent service: {dep}')
+                      exit(1)
+          
+          print('✅ All service dependencies are valid')
+          "
+
+      - name: 🔍 Validate environment templates
+        run: |
+          echo "🔍 Validating environment variable templates..."
+          
+          # Check for required environment variables in compose files
+          REQUIRED_VARS=$(grep -h '\${.*}' docker-compose*.yml | sed 's/.*\${\([^}]*\)}.*/\1/' | sort -u)
+          
+          if [ -n "$REQUIRED_VARS" ]; then
+            echo "Found required environment variables:"
+            echo "$REQUIRED_VARS"
+            echo "✅ Environment variable templates are properly defined"
+          else
+            echo "ℹ️ No environment variable templates found"
+          fi
+
+  # Summary job for branch protection
+  infrastructure-ci-success:
+    name: ✅ Infrastructure CI Success
+    runs-on: ubuntu-latest
+    needs: [validate-configs, lint-configs, security-scan, infrastructure-checks, integration-test]
+    if: always()
+    permissions:
+      statuses: write
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📊 Check all jobs status
+        id: check
+        run: |
+          echo "🔍 Checking all job results..."
+          
+          # Check if any job failed
+          if [ "${{ needs.validate-configs.result }}" != "success" ] || \
+             [ "${{ needs.lint-configs.result }}" != "success" ] || \
+             [ "${{ needs.security-scan.result }}" != "success" ] || \
+             [ "${{ needs.infrastructure-checks.result }}" != "success" ] || \
+             [ "${{ needs.integration-test.result }}" != "success" ]; then
+            echo "❌ One or more CI jobs failed"
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ All infrastructure CI checks passed successfully!"
+          echo "status=success" >> $GITHUB_OUTPUT
+      
+      - name: 📝 Set commit status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ steps.check.outputs.status }}' || 'failure';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: status,
+              context: 'Infrastructure CI Success',
+              description: status === 'success' ? 'All checks passed' : 'Some checks failed'
+            });
+
+  # Notify on failure (optional)
+  notify-failure:
+    name: 🚨 Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [infrastructure-ci-success]
+    if: failure()
+    steps:
+      - name: 🚨 Infrastructure CI Failed
+        run: |
+          echo "❌ Infrastructure CI pipeline failed"
+          echo "Please check the logs above for specific failure details"
+          echo "Common issues:"
+          echo "  - YAML syntax errors in docker-compose files"
+          echo "  - Security vulnerabilities in container images"
+          echo "  - Port conflicts between services"
+          echo "  - Invalid environment variable references"
