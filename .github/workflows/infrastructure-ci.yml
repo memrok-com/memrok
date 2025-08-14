@@ -210,26 +210,26 @@ jobs:
           
           # Check that all depends_on references exist
           python3 -c "
-import yaml
-with open('/tmp/composed.yml') as f:
-    config = yaml.safe_load(f)
-
-services = config.get('services', {})
-service_names = set(services.keys())
-
-print('🔍 Found services:', list(service_names))
-
-for service_name, service_config in services.items():
-    depends_on = service_config.get('depends_on', [])
-    if isinstance(depends_on, dict):
-        depends_on = list(depends_on.keys())
-    
-    for dep in depends_on:
-        if dep not in service_names:
-            print(f'❌ Service {service_name} depends on non-existent service: {dep}')
-            exit(1)
-
-print('✅ All service dependencies are valid')
+          import yaml
+          with open('/tmp/composed.yml') as f:
+              config = yaml.safe_load(f)
+          
+          services = config.get('services', {})
+          service_names = set(services.keys())
+          
+          print('🔍 Found services:', list(service_names))
+          
+          for service_name, service_config in services.items():
+              depends_on = service_config.get('depends_on', [])
+              if isinstance(depends_on, dict):
+                  depends_on = list(depends_on.keys())
+              
+              for dep in depends_on:
+                  if dep not in service_names:
+                      print(f'❌ Service {service_name} depends on non-existent service: {dep}')
+                      exit(1)
+          
+          print('✅ All service dependencies are valid')
           "
 
       - name: 🔍 Validate environment templates
