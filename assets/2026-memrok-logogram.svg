@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 190 190" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1,0,0,1,-800,0)">
+        <g id="Logogram" transform="matrix(0.55031,0,0,0.485493,363.221148,24.194192)">
+            <rect x="793.695" y="-49.834" width="344.533" height="390.531" style="fill:none;"/>
+            <g transform="matrix(1.817156,0,0,2.059761,-189.205223,25.193143)">
+                <path d="M567.937,67.802L613.044,13.575L635.7,13.575L588.959,68.387L618.403,103.175L594.595,103.175L567.937,67.802Z" style="fill:rgb(49,44,133);fill-rule:nonzero;"/>
+            </g>
+            <g transform="matrix(1.817156,0,0,2.059761,-127.63706,25.193143)">
+                <path d="M567.937,67.802L613.044,13.575L635.7,13.575L588.959,68.387L618.403,103.175L594.595,103.175L567.937,67.802Z" style="fill:rgb(124,134,255);fill-rule:nonzero;"/>
+            </g>
+            <g transform="matrix(1.817156,0,0,2.059761,-66.068898,25.193143)">
+                <path d="M567.937,67.802L613.044,13.575L635.7,13.575L588.959,68.387L618.403,103.175L594.595,103.175L567.937,67.802Z" style="fill:rgb(163,179,255);fill-rule:nonzero;"/>
+            </g>
+        </g>
+    </g>
+</svg>

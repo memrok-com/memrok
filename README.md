@@ -1,10 +1,14 @@
-# Memrok
+<p align="center">
+  <img src="assets/2026-memrok-logo.svg" alt="Memrok" width="320">
+</p>
 
-A cognitive prosthetic memory layer for AI agents.
+<p align="center"><em>The part of your agent who knows you, itself, and what you built together.</em></p>
+
+---
 
 Memrok is a local daemon that curates structured memory across three layers — user, agent, and collaboration — using a small "scribe" model. It reads conversation transcripts and ambient signals, maintains knowledge graphs, and injects relevant context into every LLM call.
 
-**Not** a replacement for RAG or existing memory systems. Memrok is the *curator* — it reasons about what to remember, what changed, and what matters now.
+**Not** a replacement for RAG or existing memory systems. Memrok is the *curator* — it reasons about what matters, what changed, and what to surface next.
 
 ## Status
 
