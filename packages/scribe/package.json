@@ -1,0 +1,11 @@
+{
+  "name": "@memrok/scribe",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "echo 'TODO: build'",
+    "test": "echo 'TODO: test'"
+  }
+}
