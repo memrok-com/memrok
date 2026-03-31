@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "memrok-daemon": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "tsx --test src/**/*.test.ts"
@@ -12,6 +15,7 @@
   "dependencies": {
     "@memrok/store": "0.0.0",
     "@memrok/injector": "0.0.0",
+    "@memrok/scribe": "0.0.0",
     "chokidar": "^4.0.3"
   },
   "devDependencies": {

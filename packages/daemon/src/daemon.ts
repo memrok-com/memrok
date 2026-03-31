@@ -19,6 +19,7 @@ export function createDaemon(config: DaemonConfig): MemrokDaemon {
   let startTime = 0;
   let lastPassTime: string | null = null;
   let running = false;
+  const pendingTranscriptChunks: string[] = [];
 
   function getStatus(): DaemonStatus {
     return {
@@ -31,14 +32,22 @@ export function createDaemon(config: DaemonConfig): MemrokDaemon {
   }
 
   async function runScribePass(): Promise<void> {
-    // In a full implementation, this would:
-    // 1. Gather transcript data from watcher
-    // 2. Call scribe.callModel() with the transcript
+    // 1. Gather accumulated transcript data
+    if (pendingTranscriptChunks.length === 0) return;
+    const transcript = pendingTranscriptChunks.join('\n');
+    pendingTranscriptChunks.length = 0;
+
+    // 2. Call scribe with the transcript
+    const pass = await scribe.callModel(transcript);
+
     // 3. Apply the resulting pass to the store
+    store.applyPass(pass);
+
     // 4. Invalidate injector cache
-    // For now, this is the integration point
     lastPassTime = new Date().toISOString();
     injector.invalidate();
+
+    // 5. Consolidation state is reset by the engine after callback returns
   }
 
   async function start(): Promise<void> {
@@ -53,6 +62,8 @@ export function createDaemon(config: DaemonConfig): MemrokDaemon {
     consolidation.setTriggerCallback(runScribePass);
 
     watcher.on('data', (_filePath: string, content: string) => {
+      // Accumulate transcript data for the next scribe pass
+      pendingTranscriptChunks.push(content);
       // Count lines as rough message count
       const lines = content.split('\n').filter(l => l.trim()).length;
       consolidation.recordMessages(lines);

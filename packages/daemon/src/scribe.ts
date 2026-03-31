@@ -1,21 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { SCRIBE_SYSTEM_PROMPT } from '@memrok/scribe';
 import type { ScribeConfig } from './types.js';
 import type { ScribePass } from '@memrok/store';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const DEFAULT_SYSTEM_PROMPT_PATH = resolve(__dirname, '../../scribe/src/system-prompt.md');
-
-function loadSystemPrompt(configPath?: string): string {
-  const promptPath = configPath ?? DEFAULT_SYSTEM_PROMPT_PATH;
-  try {
-    return readFileSync(promptPath, 'utf-8');
-  } catch {
-    return 'You are a memory extraction agent. Parse the transcript and return JSON with mutations.';
-  }
-}
 
 interface AnthropicResponse {
   content: Array<{ type: string; text?: string }>;
@@ -31,7 +16,7 @@ export class ScribeInterface {
 
   constructor(config: ScribeConfig) {
     this.config = config;
-    this.systemPrompt = loadSystemPrompt(config.systemPromptPath);
+    this.systemPrompt = SCRIBE_SYSTEM_PROMPT;
   }
 
   async callModel(transcript: string): Promise<ScribePass> {
