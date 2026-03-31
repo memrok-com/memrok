@@ -4,8 +4,17 @@
   "private": true,
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "build": "echo 'TODO: build'",
-    "test": "echo 'TODO: test'"
+    "build": "tsc",
+    "test": "tsx --test src/store.test.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.2"
   }
 }
