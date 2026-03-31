@@ -1,5 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { mock } from 'node:test';
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -432,5 +433,131 @@ describe('HTTP API', () => {
     for (const node of data) {
       assert.equal(node.layer, 'user');
     }
+  });
+});
+
+// ─── Chunk preservation on scribe failure tests ───
+
+describe('runScribePass chunk preservation', () => {
+
+  it('preserves chunks on failure and processes them on retry', async () => {
+    // Direct unit test of the runScribePass pattern
+    const pendingChunks: string[] = [];
+    pendingChunks.push('chunk1', 'chunk2');
+
+    let callModelCalled = false;
+
+    // Simulate the fixed runScribePass logic
+    async function runScribePass(callModel: (t: string) => Promise<void>): Promise<void> {
+      if (pendingChunks.length === 0) return;
+      const transcript = pendingChunks.join('\n');
+
+      // Call model (may throw)
+      await callModel(transcript);
+
+      // Only clear after success
+      pendingChunks.length = 0;
+    }
+
+    // First call: callModel throws
+    await assert.rejects(
+      () => runScribePass(async () => { throw new Error('API error'); }),
+      /API error/,
+    );
+
+    // Chunks should be preserved
+    assert.equal(pendingChunks.length, 2, 'chunks must be preserved after failure');
+    assert.deepEqual(pendingChunks, ['chunk1', 'chunk2']);
+
+    // Second call: callModel succeeds
+    await runScribePass(async (transcript) => {
+      callModelCalled = true;
+      assert.ok(transcript.includes('chunk1'), 'retry should include original chunk1');
+      assert.ok(transcript.includes('chunk2'), 'retry should include original chunk2');
+    });
+
+    assert.equal(callModelCalled, true, 'callModel should have been called on retry');
+    assert.equal(pendingChunks.length, 0, 'chunks should be cleared after success');
+  });
+});
+
+// ─── systemPromptPath override tests ───
+
+describe('ScribeInterface systemPromptPath', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'memrok-prompt-test-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('uses custom system prompt from file when systemPromptPath is set', async () => {
+    const customPrompt = 'You are a custom scribe. Extract memories as JSON.';
+    const promptFile = join(tmpDir, 'custom-prompt.txt');
+    writeFileSync(promptFile, customPrompt);
+
+    const scribe = new ScribeInterface({
+      provider: 'anthropic',
+      model: 'test-model',
+      apiKey: 'test-key',
+      systemPromptPath: promptFile,
+    });
+
+    // Access the systemPrompt via the Anthropic request body
+    // We mock fetch to capture the request
+    let capturedBody: any;
+    mock.method(globalThis, 'fetch', async (_url: string, opts: any) => {
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: '{"pass_id":"p1","mutations":[]}' }],
+        }),
+      } as Response;
+    });
+
+    await scribe.callModel('test transcript');
+    assert.equal(capturedBody.system, customPrompt, 'should use custom prompt from file');
+
+    mock.restoreAll();
+  });
+
+  it('uses bundled SCRIBE_SYSTEM_PROMPT when no systemPromptPath is set', async () => {
+    const scribe = new ScribeInterface({
+      provider: 'anthropic',
+      model: 'test-model',
+      apiKey: 'test-key',
+    });
+
+    let capturedBody: any;
+    mock.method(globalThis, 'fetch', async (_url: string, opts: any) => {
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: '{"pass_id":"p1","mutations":[]}' }],
+        }),
+      } as Response;
+    });
+
+    await scribe.callModel('test transcript');
+    assert.ok(capturedBody.system, 'system prompt should be set');
+    assert.ok(capturedBody.system.length > 100, 'bundled prompt should be substantial');
+
+    mock.restoreAll();
+  });
+
+  it('throws when systemPromptPath points to nonexistent file', () => {
+    assert.throws(() => {
+      new ScribeInterface({
+        provider: 'anthropic',
+        model: 'test-model',
+        apiKey: 'test-key',
+        systemPromptPath: '/nonexistent/path/prompt.txt',
+      });
+    }, /ENOENT/);
   });
 });

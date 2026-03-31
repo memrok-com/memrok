@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { SCRIBE_SYSTEM_PROMPT } from '@memrok/scribe';
 import type { ScribeConfig } from './types.js';
 import type { ScribePass } from '@memrok/store';
@@ -16,7 +17,11 @@ export class ScribeInterface {
 
   constructor(config: ScribeConfig) {
     this.config = config;
-    this.systemPrompt = SCRIBE_SYSTEM_PROMPT;
+    if (config.systemPromptPath) {
+      this.systemPrompt = readFileSync(config.systemPromptPath, 'utf-8');
+    } else {
+      this.systemPrompt = SCRIBE_SYSTEM_PROMPT;
+    }
   }
 
   async callModel(transcript: string): Promise<ScribePass> {

@@ -35,7 +35,6 @@ export function createDaemon(config: DaemonConfig): MemrokDaemon {
     // 1. Gather accumulated transcript data
     if (pendingTranscriptChunks.length === 0) return;
     const transcript = pendingTranscriptChunks.join('\n');
-    pendingTranscriptChunks.length = 0;
 
     // 2. Call scribe with the transcript
     const pass = await scribe.callModel(transcript);
@@ -43,11 +42,14 @@ export function createDaemon(config: DaemonConfig): MemrokDaemon {
     // 3. Apply the resulting pass to the store
     store.applyPass(pass);
 
-    // 4. Invalidate injector cache
+    // 4. Only clear chunks after both succeed — on failure, chunks are preserved for retry
+    pendingTranscriptChunks.length = 0;
+
+    // 5. Invalidate injector cache
     lastPassTime = new Date().toISOString();
     injector.invalidate();
 
-    // 5. Consolidation state is reset by the engine after callback returns
+    // 6. Consolidation state is reset by the engine after callback returns
   }
 
   async function start(): Promise<void> {
