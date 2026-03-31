@@ -119,6 +119,32 @@ export class ScribeInterface {
       throw new Error('Invalid scribe response: missing pass_id or mutations');
     }
 
+    const VALID_OPERATIONS = new Set(['add', 'update', 'expire']);
+    const VALID_LAYERS = new Set(['user', 'agent', 'collaboration']);
+    const MAX_KEY_LENGTH = 200;
+    const MAX_VALUE_LENGTH = 2000;
+
+    const validMutations = parsed.mutations.filter((mut: Record<string, unknown>) => {
+      if (!VALID_OPERATIONS.has(mut.operation as string)) {
+        console.warn(`[scribe] Dropping mutation with invalid operation: ${mut.operation}`);
+        return false;
+      }
+      if (!VALID_LAYERS.has(mut.layer as string)) {
+        console.warn(`[scribe] Dropping mutation with invalid layer: ${mut.layer}`);
+        return false;
+      }
+      if (typeof mut.key === 'string' && mut.key.length > MAX_KEY_LENGTH) {
+        console.warn(`[scribe] Dropping mutation with key exceeding ${MAX_KEY_LENGTH} chars: ${mut.key.slice(0, 50)}...`);
+        return false;
+      }
+      if (typeof mut.value === 'string' && mut.value.length > MAX_VALUE_LENGTH) {
+        console.warn(`[scribe] Dropping mutation with value exceeding ${MAX_VALUE_LENGTH} chars`);
+        return false;
+      }
+      return true;
+    });
+
+    parsed.mutations = validMutations;
     return parsed as ScribePass;
   }
 }

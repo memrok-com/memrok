@@ -25,17 +25,16 @@ const LAYER_TITLES: Record<string, string> = {
   collaboration: 'About our collaboration',
 };
 
-const LAMBDA = Math.log(2) / 30; // half-life 30 days
-
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function recencyScore(updatedAt: string, _maxAge: number): number {
+function recencyScore(updatedAt: string, maxAge: number): number {
   const ageDays =
     (Date.now() - new Date(updatedAt).getTime()) / (1000 * 60 * 60 * 24);
   if (ageDays < 0) return 1;
-  return Math.exp(-LAMBDA * ageDays);
+  const lambda = Math.log(2) / (maxAge / 3); // half-life at 1/3 of maxAge
+  return Math.exp(-lambda * ageDays);
 }
 
 function normalize(value: number): number {
@@ -185,7 +184,7 @@ export function createInjector(
 
   function setWeight(signal: string, value: number): void {
     if (signal in weights) {
-      (weights as Record<string, number>)[signal] = value;
+      (weights as Record<string, number>)[signal] = Math.max(0, Math.min(1, value));
       invalidate();
     }
   }

@@ -8,26 +8,14 @@ export class DaemonClient {
     this.config = config;
   }
 
-  /** Fetch context header from daemon. Returns cached/empty on failure. */
+  /** Fetch context header from daemon. No retries (hot path for assemble). Returns cached/empty on failure. */
   async fetchHeader(recentMessages?: string): Promise<string> {
-    let lastError: unknown;
-
-    for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
-      if (attempt > 0) {
-        await sleep(this.config.retryMs);
-      }
-      try {
-        const header = await this.doFetchHeader(recentMessages);
-        this.cachedHeader = header;
-        return header;
-      } catch (err) {
-        lastError = err;
-      }
-    }
-
-    // All attempts failed — degrade gracefully
-    if (lastError) {
-      console.warn(`[memrok] daemon unreachable: ${lastError}`);
+    try {
+      const header = await this.doFetchHeader(recentMessages);
+      this.cachedHeader = header;
+      return header;
+    } catch (err) {
+      console.warn(`[memrok] daemon unreachable: ${err}`);
     }
     return this.cachedHeader ?? "";
   }

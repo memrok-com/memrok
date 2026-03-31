@@ -144,7 +144,7 @@ describe("DaemonClient", () => {
       assert.equal(result, ""); // No cache, so empty
     });
 
-    it("retries on failure and succeeds on second attempt", async () => {
+    it("does not retry on failure (hot path)", async () => {
       let callCount = 0;
       mock.setHandler((_req, res) => {
         callCount++;
@@ -159,8 +159,9 @@ describe("DaemonClient", () => {
 
       const client = new DaemonClient(makeConfig(port, { maxRetries: 1, retryMs: 10 }));
       const result = await client.fetchHeader();
-      assert.equal(result, "retry success");
-      assert.equal(callCount, 2);
+      // fetchHeader no longer retries (hot path), so first failure returns empty
+      assert.equal(result, "");
+      assert.equal(callCount, 1);
     });
   });
 

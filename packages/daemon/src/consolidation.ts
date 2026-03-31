@@ -81,15 +81,19 @@ export class ConsolidationEngine {
   startLoop(intervalMs = 60_000): void {
     if (this.checkTimer) return;
     this.checkTimer = setInterval(async () => {
-      const { trigger } = this.shouldTrigger();
-      if (trigger && this.onTrigger && !this.triggering) {
-        this.triggering = true;
-        try {
-          await this.onTrigger();
-          this.recordPassComplete();
-        } finally {
-          this.triggering = false;
+      try {
+        const { trigger } = this.shouldTrigger();
+        if (trigger && this.onTrigger && !this.triggering) {
+          this.triggering = true;
+          try {
+            await this.onTrigger();
+            this.recordPassComplete();
+          } finally {
+            this.triggering = false;
+          }
         }
+      } catch (err) {
+        console.warn(`[consolidation] Error in check loop: ${err}`);
       }
     }, intervalMs);
   }

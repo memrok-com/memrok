@@ -71,7 +71,7 @@ export function createStore(dbPath: string): Store {
   );
 
   function now(): string {
-    return new Date().toISOString().replace('T', ' ').slice(0, 19);
+    return new Date().toISOString();
   }
 
   function applyMutationToNode(
@@ -194,7 +194,7 @@ export function createStore(dbPath: string): Store {
         evidence: mut.evidence ?? null,
         source: pass.source ?? null,
         emotional_weight: mut.signals?.emotional_weight ?? 0.0,
-        explicit: mut.signals?.explicit !== false ? 1 : 0,
+        explicit: mut.signals?.explicit === true ? 1 : 0,
         correction: mut.signals?.correction ? 1 : 0,
       });
 

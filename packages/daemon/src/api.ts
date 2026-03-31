@@ -13,13 +13,31 @@ interface ApiDeps {
   onTrigger?: () => Promise<void>;
 }
 
+const MAX_BODY_SIZE = 1024 * 1024; // 1MB
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new BodyTooLargeError());
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     req.on('error', reject);
   });
+}
+
+class BodyTooLargeError extends Error {
+  constructor() {
+    super('Request body exceeds 1MB limit');
+    this.name = 'BodyTooLargeError';
+  }
 }
 
 function json(res: ServerResponse, status: number, data: unknown): void {
@@ -83,8 +101,7 @@ export function createApiServer(config: ApiConfig | undefined, deps: ApiDeps): S
 
       // GET /nodes or GET /nodes/:key
       if (method === 'GET' && path.startsWith('/nodes')) {
-        const parts = path.split('/').filter(Boolean);
-        if (parts.length === 1) {
+        if (path === '/nodes') {
           // GET /nodes with query params
           const filter: Record<string, unknown> = {};
           const layer = params.get('layer');
@@ -97,9 +114,9 @@ export function createApiServer(config: ApiConfig | undefined, deps: ApiDeps): S
           json(res, 200, nodes);
           return;
         }
-        if (parts.length === 2) {
-          // GET /nodes/:key
-          const key = decodeURIComponent(parts[1]);
+        if (path.startsWith('/nodes/')) {
+          // GET /nodes/:key — use slice to preserve dots in keys
+          const key = decodeURIComponent(path.slice('/nodes/'.length));
           const node = deps.store.getNode(key);
           if (!node) {
             json(res, 404, { error: 'Node not found' });
@@ -121,6 +138,10 @@ export function createApiServer(config: ApiConfig | undefined, deps: ApiDeps): S
         const signal = path.split('/').pop()!;
         const body = await readBody(req);
         const { value } = JSON.parse(body) as { value: number };
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+          json(res, 400, { error: 'value must be a number in [0, 1]' });
+          return;
+        }
         const weights = deps.injector.getWeights();
         if (!(signal in weights)) {
           json(res, 400, { error: `Unknown signal: ${signal}` });
@@ -133,6 +154,10 @@ export function createApiServer(config: ApiConfig | undefined, deps: ApiDeps): S
 
       json(res, 404, { error: 'Not found' });
     } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        json(res, 413, { error: err.message });
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Internal server error';
       json(res, 500, { error: message });
     }
