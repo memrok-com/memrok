@@ -9,3 +9,4 @@ dist/
 **/test-transcript*.txt
 **/test-output*.json
 **/test-prompt*.txt
+.memrok-cursors.json
