@@ -4,8 +4,16 @@
   "private": true,
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "build": "echo 'TODO: build'",
-    "test": "echo 'TODO: test'"
+    "build": "tsc",
+    "test": "tsx --test src/injector.test.ts"
+  },
+  "dependencies": {
+    "@memrok/store": "0.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.2"
   }
 }

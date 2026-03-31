@@ -5,7 +5,11 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "echo 'TODO: build'",
-    "test": "echo 'TODO: test'"
+    "build": "tsc",
+    "test": "tsx --test src/plugin.test.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.2"
   }
 }
