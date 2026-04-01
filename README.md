@@ -2,38 +2,44 @@
   <img src="assets/2026-memrok-logo.svg" alt="Memrok" width="320">
 </p>
 
-<p align="center"><em>The part of your agent who knows you, itself, and what you built together.</em></p>
+<p align="center"><em>Memory that grows with you.</em></p>
 
 ---
 
-Memrok is a local daemon that curates structured memory across three layers — user, agent, and collaboration — using a small "scribe" model. It reads conversation transcripts and ambient signals, maintains knowledge graphs, and injects relevant context into every LLM call.
+Memrok is an open-source plugin for [OpenClaw](https://github.com/openclaw/openclaw) that gives your AI agent persistent, structured memory. It watches your conversations, learns what matters, and brings relevant context into every interaction — so your agent actually knows you over time.
 
-**Not** a replacement for RAG or existing memory systems. Memrok is the *curator* — it reasons about what matters, what changed, and what to surface next.
+## Why Memrok?
 
-## Status
+AI agents forget everything between sessions. You repeat yourself. Context gets lost. The agent you talked to yesterday is a stranger today.
 
-Working implementation. 93 tests across the monorepo. Deployed as an OpenClaw context engine plugin with dual-scribe architecture (transcript + reflection).
+Memrok fixes this. It runs a small "scribe" model alongside your main agent that continuously curates what it learns about:
 
-See [`docs/architecture.md`](docs/architecture.md) for the full design.
+- **You** — preferences, context, history
+- **The agent** — capabilities, learned behaviors, what works
+- **Your collaboration** — patterns, decisions, ongoing work
+
+All of this stays on your device. Nothing leaves unless you choose a remote scribe model.
+
+## Design Principles
+
+- **Local-first.** Your memory lives on your machine in SQLite. Always yours, always portable.
+- **Model-agnostic.** Swap your main model, swap your scribe model — memory persists through both.
+- **Biological, not mechanical.** Memrok doesn't consolidate on a timer. It waits for material to accumulate and a quiet moment to think — like how humans process experience.
+- **Self-tuning.** What gets surfaced adapts based on what actually matters in your conversations.
 
 ## How It Works
 
-**Three memory layers.** The store maintains separate knowledge graphs for the *user* (preferences, context, history), the *agent* (capabilities, learned behaviors), and *collaboration* (patterns, decisions, ongoing work). All data stays on-device in SQLite.
+Memrok sits between your conversations and your agent's context window:
 
-**Two scribes.**
+1. **Watch** — Memrok reads session transcripts and ambient signals as they happen
+2. **Curate** — Two scribes process what they see:
+   - A *transcript scribe* extracts facts, preferences, and patterns in near-real-time
+   - A *reflective scribe* periodically steps back to find deeper insights and meta-patterns
+3. **Inject** — On every agent turn, Memrok assembles a memory header from its knowledge graph, scored for relevance, and prepends it to the conversation
 
-| | Transcript Scribe | Reflective Scribe |
-|---|---|---|
-| Trigger | Event-driven: delta threshold + idle window | Periodic (configurable, default nightly) |
-| Input | Raw session JSONL transcripts | Accumulated graph state |
-| Output | Objective facts, preferences, patterns | Subjective insights, meta-patterns, coaching notes |
-| Model | Lightweight (Haiku-class works) | Capable recommended (Sonnet-class) |
-
-**The inject loop.** On every LLM call, OpenClaw invokes `assemble()` on the Memrok context engine. The injector queries the store, scores relevance, and prepends a memory header to the conversation — all within a latency budget, with graceful degradation to a stale cache if the store is slow.
+The result: your agent starts each session already knowing what matters.
 
 ## Quick Start
-
-Memrok installs as an OpenClaw plugin via path-based install from this repo:
 
 ```sh
 git clone https://github.com/memrok-com/memrok.git
@@ -41,7 +47,7 @@ cd memrok
 npm install && npm run build
 ```
 
-Then register the plugin in your `openclaw.json`:
+Register the plugin in your OpenClaw config:
 
 ```json
 {
@@ -66,44 +72,54 @@ Then register the plugin in your `openclaw.json`:
 }
 ```
 
-That's the minimal config. Memrok will watch OpenClaw's session transcripts automatically and begin consolidating after the first idle window.
+That's the minimal setup. Memrok watches OpenClaw's session transcripts automatically and begins curating after the first idle window.
 
-## Configuration
+## Architecture
 
-All options are optional. Defaults are designed to work without tuning.
+Memrok is a monorepo with clean separation of concerns:
+
+```
+packages/
+├── daemon/           → transcript watcher, scribe scheduler, consolidation engine
+├── scribe/           → scribe protocol, system prompts, model interface
+├── store/            → SQLite + vector index + append-only mutation log
+├── injector/         → relevance scoring, token-budget-aware context assembly
+└── openclaw-plugin/  → OpenClaw context engine lifecycle (assemble/ingest/compact)
+```
+
+### The Two Scribes
+
+| | Transcript Scribe | Reflective Scribe |
+|---|---|---|
+| Trigger | Event-driven: delta threshold + idle window | Periodic (configurable, default nightly) |
+| Input | Raw session transcripts | Accumulated graph state |
+| Output | Facts, preferences, patterns | Insights, meta-patterns, coaching notes |
+| Model | Lightweight (Haiku-class) | Capable recommended (Sonnet-class) |
+
+### Configuration
+
+All options are optional — defaults work without tuning.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `dbPath` | string | state dir | Path to the SQLite database |
-| `scribeProvider` | string | — | Model provider for the transcript scribe (e.g. `anthropic`, `ollama`) |
+| `scribeProvider` | string | — | Model provider for the transcript scribe |
 | `scribeModel` | string | — | Model for the transcript scribe |
 | `watchPaths` | string[] | session dirs | Additional transcript paths to watch |
-| `deltaThreshold` | number | 10 | Turns to accumulate before triggering consolidation |
-| `idleMinutes` | number | 15 | Idle window required before scribe runs |
+| `deltaThreshold` | number | 10 | Turns before triggering consolidation |
+| `idleMinutes` | number | 15 | Quiet time required before scribe runs |
 | `tokenBudget` | number | 2000 | Max tokens for injected memory headers |
 | `reflection.enabled` | boolean | true | Enable the reflective scribe |
 | `reflection.deltaPasses` | number | 5 | Transcript passes between reflections |
 | `reflection.cooldownHours` | number | 24 | Minimum hours between reflection runs |
-| `reflection.model` | string | scribeModel | Override model for reflection (capable model recommended) |
-| `reflection.provider` | string | scribeProvider | Override provider for reflection model |
+| `reflection.model` | string | scribeModel | Override model for reflection |
+| `reflection.provider` | string | scribeProvider | Override provider for reflection |
 
-## Monorepo Structure
+## Status
 
-```
-packages/
-├── daemon/           → memrokd: transcript watcher, scribe scheduler, consolidation engine
-├── scribe/           → scribe protocol: system prompts, model interface, reflection serializer
-├── store/            → SQLite + vector index + append-only mutation log
-├── injector/         → context assembly, relevance scoring, token-budget-aware header builder
-└── openclaw-plugin/  → OpenClaw context engine: assemble/ingest/compact lifecycle
-```
+Working implementation with 93 tests across the monorepo. Deployed as an OpenClaw context engine plugin with dual-scribe architecture.
 
-## Design Principles
-
-- **Data rests locally, reasoning happens anywhere.** Memory data stays on-device. The scribe model can be local (Ollama) or remote — same provider abstraction OpenClaw uses.
-- **Model-agnostic.** Memory survives main model swaps. The scribe itself is swappable.
-- **Event-driven.** Consolidation triggers are biological, not cron-based: material accumulates → idle window opens → scribe runs.
-- **Self-tuning.** Relevance weights adapt based on observed interaction patterns.
+For the full technical design, see [`docs/architecture.md`](docs/architecture.md).
 
 ## License
 
