@@ -25,6 +25,76 @@ const LAYER_TITLES: Record<string, string> = {
   collaboration: 'About our collaboration',
 };
 
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'to', 'of', 'in',
+  'for', 'on', 'with', 'at', 'by', 'from', 'and', 'or', 'but', 'not',
+  'this', 'that', 'it', 'be', 'as', 'do', 'did', 'has', 'have', 'had',
+  'will', 'would', 'can', 'could', 'should', 'may', 'might', 'shall',
+  'i', 'you', 'he', 'she', 'we', 'they', 'my', 'your', 'his', 'her',
+  'its', 'our', 'their', 'what', 'which', 'who', 'when', 'where', 'how',
+]);
+
+function tokenize(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((t) => t.length > 1 && !STOPWORDS.has(t))
+  );
+}
+
+interface KeywordCache {
+  nodeKeywords: Map<string, Set<string>>;
+  idf: Map<string, number>;
+  timestamp: number;
+}
+
+function buildKeywordCache(nodes: Node[]): KeywordCache {
+  const nodeKeywords = new Map<string, Set<string>>();
+  const df = new Map<string, number>();
+
+  for (const node of nodes) {
+    const keywords = tokenize(`${node.key} ${node.value}`);
+    nodeKeywords.set(node.key, keywords);
+    for (const kw of keywords) {
+      df.set(kw, (df.get(kw) ?? 0) + 1);
+    }
+  }
+
+  const N = nodes.length;
+  const idf = new Map<string, number>();
+  for (const [kw, count] of df) {
+    idf.set(kw, Math.log((N + 1) / (count + 1)));
+  }
+
+  return { nodeKeywords, idf, timestamp: Date.now() };
+}
+
+function computeSemanticScore(
+  nodeKey: string,
+  queryKeywords: Set<string>,
+  kwCache: KeywordCache,
+): number {
+  if (queryKeywords.size === 0) return 0.5;
+
+  const nkw = kwCache.nodeKeywords.get(nodeKey);
+  if (!nkw || nkw.size === 0) return 0.5;
+
+  let numerator = 0;
+  let denominator = 0;
+
+  for (const kw of nkw) {
+    const w = kwCache.idf.get(kw) ?? 0;
+    denominator += w;
+    if (queryKeywords.has(kw)) {
+      numerator += w;
+    }
+  }
+
+  if (denominator === 0) return 0.5;
+  return numerator / denominator;
+}
+
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -44,14 +114,15 @@ function normalize(value: number): number {
 function scoreNode(
   node: Node,
   weights: RelevanceWeights,
-  maxAge: number
+  maxAge: number,
+  semantic: number,
 ): number {
   return (
     weights.recency * recencyScore(node.updated_at, maxAge) +
     weights.frequency * normalize(node.reference_count) +
     weights.emotional * node.emotional_weight +
     weights.correction * normalize(node.correction_count) +
-    weights.semantic * 0.5
+    weights.semantic * semantic
   );
 }
 
@@ -90,15 +161,26 @@ export function createInjector(
   };
 
   let cache: { header: ContextHeader; timestamp: number } | null = null;
+  let kwCache: KeywordCache | null = null;
 
   function assemble(context?: { recentMessages?: string }): ContextHeader {
-    // Check cache
-    if (cache && Date.now() - cache.timestamp < cacheMaxAge) {
+    const recentMessages = context?.recentMessages ?? '';
+
+    // Header cache is only valid for context-free calls (no recentMessages)
+    if (!recentMessages && cache && Date.now() - cache.timestamp < cacheMaxAge) {
       return { ...cache.header, cachedAt: cache.timestamp };
     }
 
     const start = performance.now();
     const nodes = store.queryNodes({ active: true });
+
+    // Build/refresh keyword cache (independent of query, invalidated with store)
+    if (!kwCache || Date.now() - kwCache.timestamp >= cacheMaxAge) {
+      kwCache = buildKeywordCache(nodes);
+    }
+
+    // Tokenize query; empty query falls back to 0.5 per-node inside computeSemanticScore
+    const queryKeywords = recentMessages ? tokenize(recentMessages) : new Set<string>();
 
     // Group by layer and score
     const layerNodes: Record<LayerName, { node: Node; score: number }[]> = {
@@ -110,9 +192,10 @@ export function createInjector(
     for (const node of nodes) {
       const layer = node.layer as LayerName;
       if (!(layer in layerNodes)) continue;
+      const semantic = computeSemanticScore(node.key, queryKeywords, kwCache);
       layerNodes[layer].push({
         node,
-        score: scoreNode(node, weights, maxAge),
+        score: scoreNode(node, weights, maxAge, semantic),
       });
     }
 
@@ -170,12 +253,17 @@ export function createInjector(
       assemblyMs,
     };
 
-    cache = { header, timestamp: Date.now() };
+    // Only cache context-free results (semantic results vary per conversation)
+    if (!recentMessages) {
+      cache = { header, timestamp: Date.now() };
+    }
+
     return header;
   }
 
   function invalidate(): void {
     cache = null;
+    kwCache = null;
   }
 
   function getWeights(): RelevanceWeights {
