@@ -6,19 +6,19 @@
 
 ---
 
-Memrok is an open-source plugin for [OpenClaw](https://github.com/openclaw/openclaw) that gives your AI agent persistent, structured memory. It watches your conversations, learns what matters, and brings relevant context into every interaction — so your agent actually knows you over time.
+Memrok is an open-source plugin for [OpenClaw](https://github.com/openclaw/openclaw) that gives your AI agent persistent, structured, intelligent memory. It watches your conversations, learns what matters, and brings relevant context into every interaction — so your assistant actually grows with you.
 
 ## Why Memrok?
 
-AI agents forget everything between sessions. You repeat yourself. Context gets lost. The agent you talked to yesterday is a stranger today.
+AI agents can take notes while in conversation with you — but often, they're too absorbed with the task at hand. They can retrieve bits and pieces about past conversations — but often, they lack the relevance of those snippets. Context gets lost. You repeat yourself. The agent you talked to yesterday is a stranger today.
 
-Memrok fixes this. It runs a small "scribe" model alongside your main agent that continuously curates what it learns about:
+Memrok fixes this. It runs a small "scribe" agent alongside your main assistant that continuously curates what it learns about:
 
 - **You** — preferences, context, history
-- **The agent** — capabilities, learned behaviors, what works
-- **Your collaboration** — patterns, decisions, ongoing work
+- **The agent** — capabilities, learned behaviors, evolved identity
+- **Your collaboration** — patterns, decisions, what works
 
-All of this stays on your device. Nothing leaves unless you choose a remote scribe model.
+All of this data stays on your device. Nothing leaves unless you choose a remote scribe model.
 
 ## Design Principles
 
@@ -33,8 +33,8 @@ Memrok sits between your conversations and your agent's context window:
 
 1. **Watch** — Memrok reads session transcripts and ambient signals as they happen
 2. **Curate** — Two scribes process what they see:
-   - A *transcript scribe* extracts facts, preferences, and patterns in near-real-time
-   - A *reflective scribe* periodically steps back to find deeper insights and meta-patterns
+   - A _transcript scribe_ extracts facts, preferences, and patterns in near-real-time
+   - A _reflective scribe_ periodically steps back to find deeper insights and meta-patterns
 3. **Inject** — On every agent turn, Memrok assembles a memory header from its knowledge graph, scored for relevance, and prepends it to the conversation
 
 The result: your agent starts each session already knowing what matters.
@@ -89,31 +89,31 @@ packages/
 
 ### The Two Scribes
 
-| | Transcript Scribe | Reflective Scribe |
-|---|---|---|
+|         | Transcript Scribe                           | Reflective Scribe                        |
+| ------- | ------------------------------------------- | ---------------------------------------- |
 | Trigger | Event-driven: delta threshold + idle window | Periodic (configurable, default nightly) |
-| Input | Raw session transcripts | Accumulated graph state |
-| Output | Facts, preferences, patterns | Insights, meta-patterns, coaching notes |
-| Model | Lightweight (Haiku-class) | Capable recommended (Sonnet-class) |
+| Input   | Raw session transcripts                     | Accumulated graph state                  |
+| Output  | Facts, preferences, patterns                | Insights, meta-patterns, coaching notes  |
+| Model   | Lightweight (Haiku-class)                   | Capable recommended (Sonnet-class)       |
 
 ### Configuration
 
 All options are optional — defaults work without tuning.
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `dbPath` | string | state dir | Path to the SQLite database |
-| `scribeProvider` | string | — | Model provider for the transcript scribe |
-| `scribeModel` | string | — | Model for the transcript scribe |
-| `watchPaths` | string[] | session dirs | Additional transcript paths to watch |
-| `deltaThreshold` | number | 10 | Turns before triggering consolidation |
-| `idleMinutes` | number | 15 | Quiet time required before scribe runs |
-| `tokenBudget` | number | 2000 | Max tokens for injected memory headers |
-| `reflection.enabled` | boolean | true | Enable the reflective scribe |
-| `reflection.deltaPasses` | number | 5 | Transcript passes between reflections |
-| `reflection.cooldownHours` | number | 24 | Minimum hours between reflection runs |
-| `reflection.model` | string | scribeModel | Override model for reflection |
-| `reflection.provider` | string | scribeProvider | Override provider for reflection |
+| Option                     | Type     | Default        | Description                              |
+| -------------------------- | -------- | -------------- | ---------------------------------------- |
+| `dbPath`                   | string   | state dir      | Path to the SQLite database              |
+| `scribeProvider`           | string   | —              | Model provider for the transcript scribe |
+| `scribeModel`              | string   | —              | Model for the transcript scribe          |
+| `watchPaths`               | string[] | session dirs   | Additional transcript paths to watch     |
+| `deltaThreshold`           | number   | 10             | Turns before triggering consolidation    |
+| `idleMinutes`              | number   | 15             | Quiet time required before scribe runs   |
+| `tokenBudget`              | number   | 2000           | Max tokens for injected memory headers   |
+| `reflection.enabled`       | boolean  | true           | Enable the reflective scribe             |
+| `reflection.deltaPasses`   | number   | 5              | Transcript passes between reflections    |
+| `reflection.cooldownHours` | number   | 24             | Minimum hours between reflection runs    |
+| `reflection.model`         | string   | scribeModel    | Override model for reflection            |
+| `reflection.provider`      | string   | scribeProvider | Override provider for reflection         |
 
 ## Status
 
