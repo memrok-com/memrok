@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
-import { mkdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { createStore } from '@memrok/store';
 import { createInjector } from '@memrok/injector';
 import { ScribeInterface, REFLECTION_SYSTEM_PROMPT, serializeGraphForReflection, type ModelCaller } from '@memrok/scribe';
@@ -14,6 +14,7 @@ import type {
   Message,
   PluginApi,
   PluginRegistration,
+  ResolvedBootstrapConfig,
   ResolvedConfig,
   ResolvedReflectionConfig,
 } from './types.js';
@@ -27,6 +28,9 @@ const DEFAULT_TOKEN_BUDGET = 1000;
 const DEFAULT_REFLECTION_ENABLED = true;
 const DEFAULT_REFLECTION_DELTA_PASSES = 5;
 const DEFAULT_REFLECTION_COOLDOWN_HOURS = 24;
+const DEFAULT_BOOTSTRAP_ENABLED = true;
+const DEFAULT_BOOTSTRAP_MAX_AGE_DAYS = 90;
+const DEFAULT_BOOTSTRAP_DELAY_MS = 10_000;
 
 function expandHome(input: string): string {
   if (input === '~') return homedir();
@@ -86,6 +90,13 @@ export function resolveConfig(
     model: config.reflection?.model ?? scribeModel,
     provider: config.reflection?.provider ?? scribeProvider,
   };
+  const bootstrap: ResolvedBootstrapConfig = {
+    enabled: config.bootstrap?.enabled ?? DEFAULT_BOOTSTRAP_ENABLED,
+    memoryDir: config.bootstrap?.memoryDir,
+    memoryIndex: config.bootstrap?.memoryIndex,
+    maxAgeDays: config.bootstrap?.maxAgeDays ?? DEFAULT_BOOTSTRAP_MAX_AGE_DAYS,
+    delayMs: config.bootstrap?.delayMs ?? DEFAULT_BOOTSTRAP_DELAY_MS,
+  };
   return {
     dbPath: expandHome(config.dbPath ?? DEFAULT_DB_PATH),
     scribeProvider,
@@ -95,6 +106,7 @@ export function resolveConfig(
     idleMinutes: config.idleMinutes ?? DEFAULT_IDLE_MINUTES,
     tokenBudget: config.tokenBudget ?? DEFAULT_TOKEN_BUDGET,
     reflection,
+    bootstrap,
   };
 }
 
@@ -149,6 +161,7 @@ export function createModelCaller(api: PluginApi, config: ResolvedConfig, inputL
 
 async function delegateCompaction(params: AssembleParams | unknown): Promise<unknown> {
   try {
+    // @ts-expect-error — SDK import only available inside OpenClaw runtime
     const sdk = await import('openclaw/plugin-sdk/core');
     if (typeof sdk.delegateCompactionToRuntime === 'function') {
       return sdk.delegateCompactionToRuntime(params as never);
@@ -157,6 +170,135 @@ async function delegateCompaction(params: AssembleParams | unknown): Promise<unk
     // noop in dev/test
   }
   return { ok: true, compacted: false, delegated: false };
+}
+
+function scanMarkdownFiles(dir: string): string[] {
+  const results: string[] = [];
+  function walk(d: string): void {
+    let entries;
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = join(d, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.isFile() && extname(entry.name) === '.md') {
+        results.push(fullPath);
+      }
+    }
+  }
+  walk(dir);
+  return results.sort();
+}
+
+export async function runBootstrap(
+  store: Store,
+  scribe: ScribeInterface,
+  bootstrapConfig: ResolvedBootstrapConfig,
+  workspaceDir: string,
+): Promise<void> {
+  const memoryDir = bootstrapConfig.memoryDir
+    ? expandHome(bootstrapConfig.memoryDir)
+    : join(workspaceDir, 'memory');
+  const memoryIndex = bootstrapConfig.memoryIndex
+    ? expandHome(bootstrapConfig.memoryIndex)
+    : join(workspaceDir, 'MEMORY.md');
+
+  // Collect candidate files
+  const filePaths: string[] = [];
+  if (existsSync(memoryDir)) {
+    filePaths.push(...scanMarkdownFiles(memoryDir));
+  }
+  if (existsSync(memoryIndex) && !filePaths.includes(memoryIndex)) {
+    filePaths.push(memoryIndex);
+  }
+
+  if (filePaths.length === 0) {
+    console.log('[memrok:bootstrap] No memory files found, skipping');
+    return;
+  }
+
+  // Build set of already-bootstrapped filenames from pass sources
+  const existingPasses = store.listPasses();
+  const bootstrappedFiles = new Set<string>(
+    existingPasses
+      .filter((p) => p.source?.startsWith('bootstrap:'))
+      .map((p) => p.source!.slice('bootstrap:'.length)),
+  );
+
+  const maxAgeMs = bootstrapConfig.maxAgeDays * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  console.log(`[memrok:bootstrap] Found ${filePaths.length} file(s) to consider`);
+
+  let processed = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const filePath of filePaths) {
+    const fileName = basename(filePath);
+
+    // Skip already bootstrapped
+    if (bootstrappedFiles.has(fileName)) {
+      console.log(`[memrok:bootstrap] Skipping ${fileName} (already bootstrapped)`);
+      skipped++;
+      continue;
+    }
+
+    // Skip files older than maxAgeDays
+    try {
+      const stat = statSync(filePath);
+      if (now - stat.mtimeMs > maxAgeMs) {
+        console.log(`[memrok:bootstrap] Skipping ${fileName} (older than ${bootstrapConfig.maxAgeDays} days)`);
+        skipped++;
+        continue;
+      }
+    } catch {
+      // If we can't stat, skip
+      skipped++;
+      continue;
+    }
+
+    // Read content
+    let content: string;
+    try {
+      content = readFileSync(filePath, 'utf-8');
+    } catch (err) {
+      console.warn(`[memrok:bootstrap] Failed to read ${fileName}: ${err instanceof Error ? err.message : String(err)}`);
+      failed++;
+      continue;
+    }
+
+    if (!content.trim()) {
+      skipped++;
+      continue;
+    }
+
+    // Run through scribe
+    try {
+      const pass = await scribe.callModel(content);
+      pass.source = `bootstrap:${fileName}`;
+      const result = store.applyPass(pass);
+      console.log(
+        `[memrok:bootstrap] ${fileName}: ${pass.mutations.length} mutations (${result.nodes_created} created, ${result.nodes_updated} updated)`,
+      );
+      processed++;
+    } catch (err) {
+      console.warn(`[memrok:bootstrap] Failed to process ${fileName}: ${err instanceof Error ? err.message : String(err)}`);
+      failed++;
+      continue;
+    }
+
+    // Rate limit between files (skip delay after last file)
+    if (bootstrapConfig.delayMs > 0 && filePath !== filePaths[filePaths.length - 1]) {
+      await new Promise((resolve) => setTimeout(resolve, bootstrapConfig.delayMs));
+    }
+  }
+
+  console.log(`[memrok:bootstrap] Done: ${processed} processed, ${skipped} skipped, ${failed} failed`);
 }
 
 export interface PluginRuntimeState {
@@ -284,6 +426,22 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     async start() {
       watcher.start();
       consolidation.startLoop();
+
+      // Auto-bootstrap: seed the graph from existing memory files if no
+      // non-bootstrap passes have been recorded yet (i.e. fresh graph).
+      if (config.bootstrap.enabled) {
+        const passes = store.listPasses();
+        const hasBootstrapPasses = passes.some((p) => p.source?.startsWith('bootstrap:'));
+        if (!hasBootstrapPasses) {
+          const workspaceDir =
+            api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config) ?? process.cwd();
+          runBootstrap(store, scribe, config.bootstrap, workspaceDir).catch((err) => {
+            console.warn(
+              `[memrok] Bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+        }
+      }
     },
     async stop() {
       consolidation.stopLoop();

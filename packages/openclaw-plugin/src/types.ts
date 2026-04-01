@@ -13,6 +13,19 @@ export interface ReflectionConfig {
   provider?: string;
 }
 
+export interface BootstrapConfig {
+  /** Enable seeding the graph from existing memory files on first start. Default: true */
+  enabled?: boolean;
+  /** Directory to scan for .md files. Default: auto-detect from workspace + '/memory/' */
+  memoryDir?: string;
+  /** Path to MEMORY.md index file. Default: auto-detect from workspace + '/MEMORY.md' */
+  memoryIndex?: string;
+  /** Skip files older than this many days. Default: 90 */
+  maxAgeDays?: number;
+  /** Delay in ms between processing files to avoid rate limits. Default: 10000 */
+  delayMs?: number;
+}
+
 export interface MemrokPluginConfig {
   dbPath?: string;
   scribeProvider?: string;
@@ -22,6 +35,7 @@ export interface MemrokPluginConfig {
   idleMinutes?: number;
   tokenBudget?: number;
   reflection?: ReflectionConfig;
+  bootstrap?: BootstrapConfig;
 }
 
 export interface ResolvedReflectionConfig {
@@ -30,6 +44,14 @@ export interface ResolvedReflectionConfig {
   cooldownHours: number;
   model: string;
   provider: string;
+}
+
+export interface ResolvedBootstrapConfig {
+  enabled: boolean;
+  memoryDir?: string;
+  memoryIndex?: string;
+  maxAgeDays: number;
+  delayMs: number;
 }
 
 export interface ResolvedConfig {
@@ -41,6 +63,7 @@ export interface ResolvedConfig {
   idleMinutes: number;
   tokenBudget: number;
   reflection: ResolvedReflectionConfig;
+  bootstrap: ResolvedBootstrapConfig;
 }
 
 export interface Message {
