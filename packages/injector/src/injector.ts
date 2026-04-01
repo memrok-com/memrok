@@ -19,6 +19,10 @@ const DEFAULT_RELEVANCE_WEIGHTS: RelevanceWeights = {
   semantic: 0.5,
 };
 
+const HEADER_PREAMBLE =
+  'The following memory nodes are curated hints, not authoritative facts. ' +
+  'Verify against actual state (files, tools, conversation) before relying on them.\n';
+
 const LAYER_TITLES: Record<string, string> = {
   user: 'About the user',
   agent: 'About this agent',
@@ -205,7 +209,7 @@ export function createInjector(
     }
 
     // Allocate token budget proportionally
-    const headerPrefix = '## Memory Context (Memrok)\n';
+    const headerPrefix = '## Memory Context (Memrok)\n' + HEADER_PREAMBLE;
     const prefixTokens = estimateTokens(headerPrefix);
     const remainingBudget = tokenBudget - prefixTokens;
 
