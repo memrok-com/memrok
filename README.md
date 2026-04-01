@@ -45,17 +45,16 @@ The result: your agent starts each session already knowing what matters.
 git clone https://github.com/memrok-com/memrok.git
 cd memrok
 npm install && npm run build
+
+# Install the plugin into OpenClaw
+openclaw plugins install --link ./packages/openclaw-plugin
 ```
 
-Register the plugin in your OpenClaw config:
+Then activate Memrok as your context engine. Add to your `openclaw.json` (or use `openclaw config`):
 
 ```json
 {
   "plugins": {
-    "allow": ["memrok"],
-    "load": {
-      "paths": ["/path/to/memrok/packages/openclaw-plugin"]
-    },
     "slots": {
       "contextEngine": "memrok"
     },
@@ -72,7 +71,7 @@ Register the plugin in your OpenClaw config:
 }
 ```
 
-That's the minimal setup. Memrok watches OpenClaw's session transcripts automatically and begins curating after the first idle window.
+Restart OpenClaw. Memrok watches session transcripts automatically and begins curating after the first idle window.
 
 ## Architecture
 
