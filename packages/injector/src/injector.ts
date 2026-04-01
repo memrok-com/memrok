@@ -12,11 +12,11 @@ const DEFAULT_CACHE_MAX_AGE = 30000;
 
 const DEFAULT_LAYER_WEIGHTS = { user: 0.5, agent: 0.25, collaboration: 0.25 };
 const DEFAULT_RELEVANCE_WEIGHTS: RelevanceWeights = {
-  recency: 0.3,
-  frequency: 0.15,
-  emotional: 0.2,
+  recency: 0.15,
+  frequency: 0.1,
+  emotional: 0.1,
   correction: 0.15,
-  semantic: 0.2,
+  semantic: 0.5,
 };
 
 const LAYER_TITLES: Record<string, string> = {

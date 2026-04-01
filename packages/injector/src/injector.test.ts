@@ -426,11 +426,11 @@ describe('injector', () => {
     it('getWeights returns current weights', () => {
       const injector = createInjector(store);
       const w = injector.getWeights();
-      assert.equal(w.recency, 0.3);
-      assert.equal(w.frequency, 0.15);
-      assert.equal(w.emotional, 0.2);
+      assert.equal(w.recency, 0.15);
+      assert.equal(w.frequency, 0.1);
+      assert.equal(w.emotional, 0.1);
       assert.equal(w.correction, 0.15);
-      assert.equal(w.semantic, 0.2);
+      assert.equal(w.semantic, 0.5);
     });
 
     it('setWeight updates a weight and invalidates cache', () => {
