@@ -1,8 +1,12 @@
 <p align="center">
-  <img src="assets/2026-memrok-logo.svg" alt="Memrok" width="320">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/2026-memrok-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/2026-memrok-logo.svg">
+    <img src="assets/2026-memrok-logo.svg" alt="Memrok" width="320">
+  </picture>
 </p>
 
-<p align="center"><em>Memory that grows with you.</em></p>
+<p align="center"><em>Memory with judgment.</em></p>
 
 ---
 
@@ -113,23 +117,6 @@ All options are optional — defaults work without tuning.
 | `reflection.cooldownHours` | number   | 24             | Minimum hours between reflection runs    |
 | `reflection.model`         | string   | scribeModel    | Override model for reflection            |
 | `reflection.provider`      | string   | scribeProvider | Override provider for reflection         |
-
-## Changelog
-
-### v0.2.0
-
-- **Bootstrap from existing memory.** On first run, Memrok auto-seeds its graph from your existing `memory/` directory and `MEMORY.md` — no cold start.
-- **Semantic relevance scoring.** The injector now uses keyword overlap + IDF similarity (not just recency/layer weights) to pick what to surface. Research-backed default weights: 50% semantic, 25% recency, 25% layer.
-- **Reliability fixes.** Failed scribe passes no longer silently reset the consolidation counter (which could lose buffered transcripts). Bootstrap correctly skips graphs that already have live data. File deduplication uses full paths instead of basenames.
-- **Test suite fixed.** All 93 tests now run correctly under Vitest (previously broken due to runner mismatch).
-
-### v0.1.0
-
-- Initial release: daemon, scribe, store, injector, OpenClaw plugin.
-- Three-layer knowledge graph (user, agent, collaboration).
-- Dual-scribe architecture (transcript + reflective).
-- Event-driven consolidation with delta threshold + idle window.
-- Token-budget-aware context injection with caching.
 
 ## Status
 
