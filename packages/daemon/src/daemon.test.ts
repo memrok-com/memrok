@@ -1,6 +1,5 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { mock } from 'node:test';
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -509,7 +508,7 @@ describe('ScribeInterface systemPromptPath', () => {
     // Access the systemPrompt via the Anthropic request body
     // We mock fetch to capture the request
     let capturedBody: any;
-    mock.method(globalThis, 'fetch', async (_url: string, opts: any) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation( async (_url: string, opts: any) => {
       capturedBody = JSON.parse(opts.body);
       return {
         ok: true,
@@ -522,7 +521,7 @@ describe('ScribeInterface systemPromptPath', () => {
     await scribe.callModel('test transcript');
     assert.equal(capturedBody.system, customPrompt, 'should use custom prompt from file');
 
-    mock.restoreAll();
+    vi.restoreAllMocks();
   });
 
   it('uses bundled SCRIBE_SYSTEM_PROMPT when no systemPromptPath is set', async () => {
@@ -533,7 +532,7 @@ describe('ScribeInterface systemPromptPath', () => {
     });
 
     let capturedBody: any;
-    mock.method(globalThis, 'fetch', async (_url: string, opts: any) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation( async (_url: string, opts: any) => {
       capturedBody = JSON.parse(opts.body);
       return {
         ok: true,
@@ -547,7 +546,7 @@ describe('ScribeInterface systemPromptPath', () => {
     assert.ok(capturedBody.system, 'system prompt should be set');
     assert.ok(capturedBody.system.length > 100, 'bundled prompt should be substantial');
 
-    mock.restoreAll();
+    vi.restoreAllMocks();
   });
 
   it('throws when systemPromptPath points to nonexistent file', () => {

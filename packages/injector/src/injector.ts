@@ -184,7 +184,7 @@ export function createInjector(
 
   function setWeight(signal: string, value: number): void {
     if (signal in weights) {
-      (weights as Record<string, number>)[signal] = Math.max(0, Math.min(1, value));
+      (weights as unknown as Record<string, number>)[signal] = Math.max(0, Math.min(1, value));
       invalidate();
     }
   }

@@ -1,11 +1,17 @@
-export { default as register, createContextEngine, resolveConfig } from "./plugin.js";
-export { DaemonClient } from "./client.js";
+export {
+  default,
+  createContextEngine,
+  createModelCaller,
+  createPluginRegistration,
+  resolveConfig,
+} from './plugin.js';
 export type {
-  MemrokPluginConfig,
-  ResolvedConfig,
-  ContextHeader,
-  ContextEngine,
   AssembleParams,
   AssembleResult,
+  ContextEngine,
+  ContextHeader,
+  MemrokPluginConfig,
   PluginApi,
-} from "./types.js";
+  PluginRegistration,
+  ResolvedConfig,
+} from './types.js';

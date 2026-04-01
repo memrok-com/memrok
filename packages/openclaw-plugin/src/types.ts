@@ -1,73 +1,81 @@
-/** Plugin configuration from openclaw.json entries. */
+import type { ContextHeader } from '@memrok/injector';
+
+export interface ReflectionConfig {
+  /** Enable reflective scribe passes. Default: true */
+  enabled?: boolean;
+  /** Number of transcript scribe passes since last reflection before reflecting. Default: 5 */
+  deltaPasses?: number;
+  /** Minimum hours between reflections. Default: 24 */
+  cooldownHours?: number;
+  /** Model for reflection (defaults to scribeModel). Reflection benefits from a capable model. */
+  model?: string;
+  /** Provider for reflection model (defaults to scribeProvider). */
+  provider?: string;
+}
+
 export interface MemrokPluginConfig {
-  daemonUrl?: string;
-  timeoutMs?: number;
-  retryMs?: number;
-  maxRetries?: number;
+  dbPath?: string;
+  scribeProvider?: string;
+  scribeModel?: string;
+  watchPaths?: string[];
+  deltaThreshold?: number;
+  idleMinutes?: number;
+  tokenBudget?: number;
+  reflection?: ReflectionConfig;
 }
 
-/** Resolved config with defaults applied. */
+export interface ResolvedReflectionConfig {
+  enabled: boolean;
+  deltaPasses: number;
+  cooldownHours: number;
+  model: string;
+  provider: string;
+}
+
 export interface ResolvedConfig {
-  daemonUrl: string;
-  timeoutMs: number;
-  retryMs: number;
-  maxRetries: number;
+  dbPath: string;
+  scribeProvider: string;
+  scribeModel: string;
+  watchPaths: string[];
+  deltaThreshold: number;
+  idleMinutes: number;
+  tokenBudget: number;
+  reflection: ResolvedReflectionConfig;
 }
 
-/** Shape returned by daemon POST /header. */
-export interface ContextHeader {
-  text: string;
-  tokens: number;
-  nodesUsed: number;
-  layers: {
-    user: number;
-    agent: number;
-    collaboration: number;
-  };
-  cachedAt?: number;
-  assemblyMs: number;
-}
-
-/** Message type matching OpenClaw's message shape. */
 export interface Message {
   role: string;
-  content: string;
+  content?: string | Array<{ type?: string; text?: string }>;
   [key: string]: unknown;
 }
 
-/** Params for assemble(). */
 export interface AssembleParams {
-  sessionId: string;
+  sessionId?: string;
   messages: Message[];
-  tokenBudget: number;
+  tokenBudget?: number;
 }
 
-/** Result from assemble(). */
 export interface AssembleResult {
   messages: Message[];
   estimatedTokens: number;
   systemPromptAddition?: string;
 }
 
-/** Params for compact(). */
 export interface CompactParams {
-  sessionId: string;
+  sessionId?: string;
   force?: boolean;
 }
 
-/** Params for ingest(). */
 export interface IngestParams {
-  sessionId: string;
-  message: Message;
+  sessionId?: string;
+  message?: Message;
   isHeartbeat?: boolean;
 }
 
-/** Params for afterTurn(). */
 export interface AfterTurnParams {
-  sessionId: string;
+  sessionId?: string;
 }
 
-/** The context engine interface as expected by OpenClaw. */
 export interface ContextEngine {
   info: {
     id: string;
@@ -75,12 +83,74 @@ export interface ContextEngine {
     ownsCompaction: boolean;
   };
   assemble(params: AssembleParams): Promise<AssembleResult>;
-  compact(params: CompactParams): Promise<{ ok: boolean; compacted: boolean }>;
+  compact(params: CompactParams): Promise<unknown>;
   ingest(params: IngestParams): Promise<{ ingested: boolean }>;
   afterTurn(params: AfterTurnParams): Promise<void>;
 }
 
-/** OpenClaw plugin API. */
-export interface PluginApi {
-  registerContextEngine(id: string, factory: () => ContextEngine): void;
+export interface PluginLogger {
+  debug?(message: string): void;
+  info?(message: string): void;
+  warn(message: string): void;
+  error?(message: string): void;
 }
+
+export interface ModelAuthApi {
+  getApiKeyForModel?(params: { model: string; cfg?: unknown }): Promise<unknown>;
+  resolveApiKeyForProvider?(params: { provider: string; cfg?: unknown }): Promise<unknown>;
+}
+
+export interface PluginRuntime {
+  modelAuth?: ModelAuthApi;
+  state?: {
+    resolveStateDir?: () => string;
+  };
+  agent?: {
+    sessionsDir?: string;
+    sessionDirs?: string[];
+    runEmbeddedPiAgent?: (params: {
+      sessionId: string;
+      sessionFile: string;
+      workspaceDir: string;
+      config: unknown;
+      prompt: string;
+      timeoutMs: number;
+      runId: string;
+      provider?: string;
+      model?: string;
+      disableTools?: boolean;
+      [key: string]: unknown;
+    }) => Promise<{ payloads?: Array<{ isError?: boolean; text?: string }> }>;
+    resolveAgentWorkspaceDir?: (config: unknown) => string;
+  };
+}
+
+export interface PluginServiceContext {
+  stateDir: string;
+}
+
+export interface PluginService {
+  id: string;
+  start(ctx: PluginServiceContext): Promise<void>;
+  stop(): Promise<void>;
+}
+
+export interface PluginApi {
+  pluginConfig?: Record<string, unknown>;
+  config?: unknown;
+  runtime?: PluginRuntime;
+  logger: PluginLogger;
+  registrationMode?: 'full' | 'setup-only' | 'setup-runtime';
+  registerContextEngine(id: string, factory: () => ContextEngine): void;
+  registerService(service: PluginService): void;
+}
+
+export interface PluginRegistration {
+  id: string;
+  name: string;
+  description: string;
+  kind?: string;
+  register(api: PluginApi): void;
+}
+
+export type { ContextHeader };

@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { createStore, type Store, type ScribePass } from '@memrok/store';
 import { createInjector } from './injector.js';

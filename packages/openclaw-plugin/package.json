@@ -1,12 +1,28 @@
 {
-  "name": "@memrok/openclaw-plugin",
+  "name": "memrok",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  },
   "scripts": {
     "build": "tsc",
     "test": "tsx --test src/plugin.test.ts"
+  },
+  "dependencies": {
+    "@memrok/daemon": "0.0.0",
+    "@memrok/injector": "0.0.0",
+    "@memrok/scribe": "0.0.0",
+    "@memrok/store": "0.0.0"
   },
   "devDependencies": {
     "tsx": "^4.19.4",

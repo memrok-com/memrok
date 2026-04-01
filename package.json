@@ -15,5 +15,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/memrok-com/memrok.git"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.2"
   }
 }

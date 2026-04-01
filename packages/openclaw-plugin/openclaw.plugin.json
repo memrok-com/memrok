@@ -1,0 +1,22 @@
+{
+  "id": "memrok",
+  "kind": "context-engine",
+  "name": "Memrok Memory Layer",
+  "description": "Persistent memory layer with knowledge graphs",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "dbPath": { "type": "string" },
+      "scribeProvider": { "type": "string" },
+      "scribeModel": { "type": "string" },
+      "watchPaths": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "deltaThreshold": { "type": "number" },
+      "idleMinutes": { "type": "number" },
+      "tokenBudget": { "type": "number" }
+    }
+  }
+}

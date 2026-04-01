@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { createStore } from './store.js';
 import type { Store, ScribePass } from './types.js';
