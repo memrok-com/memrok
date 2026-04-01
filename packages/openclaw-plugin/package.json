@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "tsx --test src/plugin.test.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@memrok/daemon": "0.0.0",

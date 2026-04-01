@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@memrok/store": "0.0.0",

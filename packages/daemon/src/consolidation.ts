@@ -72,6 +72,8 @@ export class ConsolidationEngine {
       try {
         await this.onTrigger();
         this.recordPassComplete();
+      } catch (err) {
+        console.warn(`[consolidation] Trigger callback failed, counter NOT reset: ${err}`);
       } finally {
         this.triggering = false;
       }
@@ -88,6 +90,8 @@ export class ConsolidationEngine {
           try {
             await this.onTrigger();
             this.recordPassComplete();
+          } catch (err) {
+            console.warn(`[consolidation] Trigger callback failed, counter NOT reset: ${err}`);
           } finally {
             this.triggering = false;
           }

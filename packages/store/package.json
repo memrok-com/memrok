@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "tsx --test src/store.test.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "better-sqlite3": "^11.9.1"

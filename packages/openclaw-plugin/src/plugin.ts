@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { createStore } from '@memrok/store';
 import { createInjector } from '@memrok/injector';
 import { ScribeInterface, REFLECTION_SYSTEM_PROMPT, serializeGraphForReflection, type ModelCaller } from '@memrok/scribe';
@@ -239,11 +239,11 @@ export async function runBootstrap(
   let failed = 0;
 
   for (const filePath of filePaths) {
-    const fileName = basename(filePath);
+    const fileKey = relative(workspaceDir, filePath);
 
     // Skip already bootstrapped
-    if (bootstrappedFiles.has(fileName)) {
-      console.log(`[memrok:bootstrap] Skipping ${fileName} (already bootstrapped)`);
+    if (bootstrappedFiles.has(fileKey)) {
+      console.log(`[memrok:bootstrap] Skipping ${fileKey} (already bootstrapped)`);
       skipped++;
       continue;
     }
@@ -252,7 +252,7 @@ export async function runBootstrap(
     try {
       const stat = statSync(filePath);
       if (now - stat.mtimeMs > maxAgeMs) {
-        console.log(`[memrok:bootstrap] Skipping ${fileName} (older than ${bootstrapConfig.maxAgeDays} days)`);
+        console.log(`[memrok:bootstrap] Skipping ${fileKey} (older than ${bootstrapConfig.maxAgeDays} days)`);
         skipped++;
         continue;
       }
@@ -267,7 +267,7 @@ export async function runBootstrap(
     try {
       content = readFileSync(filePath, 'utf-8');
     } catch (err) {
-      console.warn(`[memrok:bootstrap] Failed to read ${fileName}: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[memrok:bootstrap] Failed to read ${fileKey}: ${err instanceof Error ? err.message : String(err)}`);
       failed++;
       continue;
     }
@@ -280,14 +280,14 @@ export async function runBootstrap(
     // Run through scribe
     try {
       const pass = await scribe.callModel(content);
-      pass.source = `bootstrap:${fileName}`;
+      pass.source = `bootstrap:${fileKey}`;
       const result = store.applyPass(pass);
       console.log(
-        `[memrok:bootstrap] ${fileName}: ${pass.mutations.length} mutations (${result.nodes_created} created, ${result.nodes_updated} updated)`,
+        `[memrok:bootstrap] ${fileKey}: ${pass.mutations.length} mutations (${result.nodes_created} created, ${result.nodes_updated} updated)`,
       );
       processed++;
     } catch (err) {
-      console.warn(`[memrok:bootstrap] Failed to process ${fileName}: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[memrok:bootstrap] Failed to process ${fileKey}: ${err instanceof Error ? err.message : String(err)}`);
       failed++;
       continue;
     }
@@ -407,6 +407,7 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
       await checkAndRunReflection();
     } catch (err) {
       console.warn(`[memrok] Scribe pass failed: ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
     }
   };
 
@@ -431,8 +432,8 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
       // non-bootstrap passes have been recorded yet (i.e. fresh graph).
       if (config.bootstrap.enabled) {
         const passes = store.listPasses();
-        const hasBootstrapPasses = passes.some((p) => p.source?.startsWith('bootstrap:'));
-        if (!hasBootstrapPasses) {
+        const hasNonBootstrapPasses = passes.some((p) => p.source && !p.source.startsWith('bootstrap:'));
+        if (!hasNonBootstrapPasses) {
           const workspaceDir =
             api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config) ?? process.cwd();
           runBootstrap(store, scribe, config.bootstrap, workspaceDir).catch((err) => {
