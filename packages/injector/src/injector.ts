@@ -6,7 +6,8 @@ import type {
   Injector,
 } from './types.js';
 
-const DEFAULT_TOKEN_BUDGET = 1000;
+const DEFAULT_TOKEN_BUDGET = 2000;
+const DEFAULT_MAX_NODE_CHARS = 150;
 const DEFAULT_MAX_AGE = 90;
 const DEFAULT_CACHE_MAX_AGE = 30000;
 
@@ -99,6 +100,13 @@ function computeSemanticScore(
   return numerator / denominator;
 }
 
+function truncateValue(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  const truncated = value.slice(0, maxChars);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return (lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated) + '\u2026';
+}
+
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -137,6 +145,7 @@ export function createInjector(
   config?: InjectorConfig
 ): Injector {
   const tokenBudget = config?.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+  const maxNodeChars = config?.maxNodeChars ?? DEFAULT_MAX_NODE_CHARS;
   const maxAge = config?.maxAge ?? DEFAULT_MAX_AGE;
   const cacheMaxAge = config?.cacheMaxAge ?? DEFAULT_CACHE_MAX_AGE;
 
@@ -231,7 +240,7 @@ export function createInjector(
       const lines: string[] = [];
 
       for (const { node } of entries) {
-        const line = `- ${node.value}\n`;
+        const line = `- ${truncateValue(node.value, maxNodeChars)}\n`;
         const lineTokens = estimateTokens(line);
         if (sectionTokens + lineTokens > budget) break;
         lines.push(line);

@@ -1,5 +1,6 @@
 export interface InjectorConfig {
   tokenBudget?: number;
+  maxNodeChars?: number;
   layerWeights?: {
     user?: number;
     agent?: number;
