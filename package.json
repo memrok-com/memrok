@@ -1,6 +1,6 @@
 {
   "name": "memrok",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Cognitive prosthetic memory layer for AI agents",
   "workspaces": [
