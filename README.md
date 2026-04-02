@@ -40,12 +40,7 @@ The result: your agent starts each session already knowing what matters.
 ## Quick Start
 
 ```sh
-git clone https://github.com/memrok-com/memrok.git
-cd memrok
-npm install && npm run build
-
-# Install the plugin into OpenClaw
-openclaw plugins install --link ./packages/openclaw-plugin
+openclaw plugins install clawhub:memrok
 ```
 
 Then activate Memrok as your context engine. Add to your `openclaw.json` (or use `openclaw config`):
@@ -70,6 +65,16 @@ Then activate Memrok as your context engine. Add to your `openclaw.json` (or use
 ```
 
 Restart OpenClaw. Memrok watches session transcripts automatically and begins curating after the first idle window.
+
+## Privacy & Data Flow
+
+Memrok is local-first, but not magically offline.
+
+- **Local database:** Memrok stores memory in a local SQLite database at `~/.memrok/memrok.db` by default.
+- **Transcript and file access:** it watches OpenClaw session directories and any configured `watchPaths`. If bootstrap is enabled, it may also scan workspace Markdown files.
+- **Remote model providers:** if you configure a remote provider for scribe passes, transcript and file content will be sent to that provider as part of normal operation.
+- **Risk controls:** narrow `watchPaths`, disable bootstrap if you do not want broad file scanning, prefer local models where available, and consider disabling the reflective scribe if you want to minimize exfiltration risk.
+- **Operational hygiene:** treat `~/.memrok/memrok.db` as sensitive data; back it up and secure it accordingly.
 
 ## Architecture
 
