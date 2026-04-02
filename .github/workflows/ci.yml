@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (project references)
+        run: npx tsc --build
+
+      - name: Bundle plugin
+        working-directory: packages/openclaw-plugin
+        run: npx tsup
+
+      - name: Tests
+        run: npm test

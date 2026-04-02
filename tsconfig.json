@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/store" },
+    { "path": "packages/scribe" },
+    { "path": "packages/injector" },
+    { "path": "packages/daemon" },
+    { "path": "packages/openclaw-plugin" }
+  ]
+}
