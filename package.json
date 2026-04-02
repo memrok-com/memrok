@@ -1,6 +1,6 @@
 {
   "name": "memrok",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Persistent, structured, intelligent memory layer for OpenClaw AI agents",
   "workspaces": [

@@ -1,6 +1,6 @@
 {
   "name": "memrok",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "description": "Persistent, structured, intelligent memory layer for OpenClaw AI agents",
   "main": "dist/index.js",
@@ -37,10 +37,10 @@
   "dependencies": {
     "better-sqlite3": "^11.9.1",
     "chokidar": "^4.0.3",
-    "@memrok/daemon": "0.3.1",
-    "@memrok/injector": "0.3.1",
-    "@memrok/scribe": "0.3.1",
-    "@memrok/store": "0.3.1"
+    "@memrok/daemon": "0.3.2",
+    "@memrok/injector": "0.3.2",
+    "@memrok/scribe": "0.3.2",
+    "@memrok/store": "0.3.2"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

@@ -1,0 +1,14 @@
+name: Publish to ClawHub
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    uses: openclaw/clawhub/.github/workflows/package-publish.yml@main
+    with:
+      dry_run: false
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
