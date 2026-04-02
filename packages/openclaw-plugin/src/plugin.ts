@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { createStore } from '@memrok/store';
 import { createInjector } from '@memrok/injector';
@@ -76,6 +76,28 @@ function defaultWatchPaths(api: PluginApi): string[] {
   return [join(homedir(), '.openclaw', 'agents')];
 }
 
+/** Remove stale memrok-scribe-*.jsonl files from ~/.memrok/tmp/ on startup. */
+function cleanupStaleTmpFiles(): void {
+  const tmpDir = join(homedir(), '.memrok', 'tmp');
+  try {
+    const entries = readdirSync(tmpDir);
+    let cleaned = 0;
+    for (const entry of entries) {
+      if (entry.startsWith('memrok-scribe-') && entry.endsWith('.jsonl')) {
+        try {
+          unlinkSync(join(tmpDir, entry));
+          cleaned++;
+        } catch {}
+      }
+    }
+    if (cleaned > 0) {
+      console.log(`[memrok] Cleaned up ${cleaned} orphaned scribe temp file(s)`);
+    }
+  } catch {
+    // tmp dir may not exist yet — that's fine
+  }
+}
+
 export function resolveConfig(
   raw: MemrokPluginConfig | Record<string, unknown> | undefined,
   api?: PluginApi,
@@ -135,21 +157,24 @@ export function createModelCaller(api: PluginApi, config: ResolvedConfig, inputL
     const label = inputLabel ?? 'TRANSCRIPT';
     const fullPrompt = `${systemPrompt}\n\n${label}:\n${userMessage}\n`;
 
-    const result = await runAgent({
-      sessionId,
-      sessionFile,
-      workspaceDir: api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config) ?? process.cwd(),
-      config: api.config,
-      prompt: fullPrompt,
-      timeoutMs: 60_000,
-      runId: `memrok-scribe-${Date.now()}`,
-      provider: config.scribeProvider,
-      model: config.scribeModel,
-      disableTools: true,
-    });
-
-    // Clean up session file
-    try { const { unlink } = await import('node:fs/promises'); await unlink(sessionFile); } catch {}
+    let result;
+    try {
+      result = await runAgent({
+        sessionId,
+        sessionFile,
+        workspaceDir: api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config) ?? process.cwd(),
+        config: api.config,
+        prompt: fullPrompt,
+        timeoutMs: 60_000,
+        runId: `memrok-scribe-${Date.now()}`,
+        provider: config.scribeProvider,
+        model: config.scribeModel,
+        disableTools: true,
+      });
+    } finally {
+      // Always clean up session file, even on error/timeout
+      try { const { unlink } = await import('node:fs/promises'); await unlink(sessionFile); } catch {}
+    }
 
     const text = collectText(result.payloads ?? []);
     if (!text) {
@@ -442,6 +467,9 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
   api.registerService({
     id: 'memrok-watcher',
     async start() {
+      // Clean up orphaned scribe temp files from previous runs
+      cleanupStaleTmpFiles();
+
       watcher.start();
       consolidation.startLoop();
 
