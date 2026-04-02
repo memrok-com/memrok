@@ -1,6 +1,6 @@
 {
   "name": "memrok",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Cognitive prosthetic memory layer for AI agents",
   "workspaces": [
@@ -17,6 +17,7 @@
     "url": "https://github.com/memrok-com/memrok.git"
   },
   "devDependencies": {
+    "tsup": "^8.5.1",
     "vitest": "^4.1.2"
   }
 }

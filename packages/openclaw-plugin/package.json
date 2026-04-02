@@ -1,8 +1,8 @@
 {
   "name": "memrok",
-  "version": "0.3.0",
-  "private": true,
+  "version": "0.3.1",
   "type": "module",
+  "description": "Persistent memory layer for OpenClaw AI agents",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -14,20 +14,53 @@
   "openclaw": {
     "extensions": [
       "./dist/index.js"
-    ]
+    ],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.4.1",
+      "pluginSdkVersion": "2026.3.24-beta.2"
+    }
   },
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "bundle": "tsup",
     "test": "vitest run"
   },
   "dependencies": {
-    "@memrok/daemon": "0.0.0",
-    "@memrok/injector": "0.0.0",
-    "@memrok/scribe": "0.0.0",
-    "@memrok/store": "0.0.0"
+    "better-sqlite3": "^11.9.1",
+    "chokidar": "^4.0.3",
+    "@memrok/daemon": "0.3.1",
+    "@memrok/injector": "0.3.1",
+    "@memrok/scribe": "0.3.1",
+    "@memrok/store": "0.3.1"
   },
   "devDependencies": {
+    "tsup": "^8.0.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.2"
+  },
+  "keywords": [
+    "openclaw",
+    "memrok",
+    "memory",
+    "ai-agent",
+    "context-engine",
+    "knowledge-graph"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/memrok-com/memrok.git"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
