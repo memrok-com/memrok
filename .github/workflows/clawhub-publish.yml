@@ -26,7 +26,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build plugin
+      - name: Build monorepo
+        run: npm run build
+
+      - name: Bundle plugin
         working-directory: packages/openclaw-plugin
         run: npx tsup
 
