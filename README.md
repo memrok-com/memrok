@@ -121,6 +121,8 @@ All options are optional — defaults work without tuning.
 
 Deployed as an OpenClaw context engine plugin with dual-scribe architecture. 93 tests across the monorepo.
 
+Memrok also writes a small health snapshot to `~/.memrok/memrok.status.json`, including recent transcript-scribe, reflective-scribe, and injection activity plus last error and node count.
+
 For the full technical design, see [`docs/architecture.md`](docs/architecture.md).
 
 ## License

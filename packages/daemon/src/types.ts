@@ -35,12 +35,15 @@ export interface DaemonConfig {
   api?: ApiConfig;
 }
 
+import type { MemrokActivityStatus } from './status.js';
+
 export interface DaemonStatus {
   running: boolean;
   uptime: number;
   lastPass: string | null;
   pendingMessages: number;
   watchedFiles: number;
+  activity?: MemrokActivityStatus;
 }
 
 export interface MemrokDaemon {

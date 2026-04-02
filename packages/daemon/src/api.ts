@@ -65,6 +65,12 @@ export function createApiServer(config: ApiConfig | undefined, deps: ApiDeps): S
         return;
       }
 
+      // GET /status
+      if (method === 'GET' && path === '/status') {
+        json(res, 200, deps.getStatus());
+        return;
+      }
+
       // GET /header
       if (method === 'GET' && path === '/header') {
         const header = deps.injector.assemble();

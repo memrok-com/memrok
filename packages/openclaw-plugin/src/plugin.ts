@@ -4,7 +4,7 @@ import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { createStore } from '@memrok/store';
 import { createInjector } from '@memrok/injector';
 import { ScribeInterface, REFLECTION_SYSTEM_PROMPT, serializeGraphForReflection, type ModelCaller } from '@memrok/scribe';
-import { TranscriptWatcher, ConsolidationEngine } from '@memrok/daemon';
+import { TranscriptWatcher, ConsolidationEngine, StatusTracker } from '@memrok/daemon';
 import type { Store } from '@memrok/store';
 import type { Injector } from '@memrok/injector';
 import type {
@@ -356,7 +356,16 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
   const config = resolveConfig(api.pluginConfig, api);
   mkdirSync(dirname(config.dbPath), { recursive: true });
   const store = createStore(config.dbPath);
-  const injector = createInjector(store, { tokenBudget: config.tokenBudget });
+  const status = new StatusTracker(config.dbPath);
+  status.setNodeCount(store.queryNodes().length);
+  const baseInjector = createInjector(store, { tokenBudget: config.tokenBudget });
+  const injector = {
+    ...baseInjector,
+    assemble(context: { recentMessages?: string }) {
+      status.recordInjection();
+      return baseInjector.assemble(context);
+    },
+  };
   const scribe = new ScribeInterface(createModelCaller(api, config));
 
   // Reflection scribe uses its own model/provider (may differ from transcript scribe)
@@ -376,6 +385,7 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     idleMinutes: config.idleMinutes,
   });
   const pendingTranscriptChunks: string[] = [];
+  let lastSourceProcessed: string | null = null;
 
   // Reflection state
   let passesSinceReflection = 0;
@@ -390,7 +400,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
       injector.invalidate();
       passesSinceReflection = 0;
       lastReflectionTime = Date.now();
+      status.recordReflectiveScribe();
+      status.setNodeCount(store.queryNodes().length);
     } catch (err) {
+      status.recordError('reflective-scribe', err);
       console.warn(`[memrok] Reflection pass failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
@@ -404,14 +417,18 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
       pendingTranscriptChunks.length = 0;
       injector.invalidate();
       passesSinceReflection++;
+      status.recordTranscriptScribe(lastSourceProcessed);
+      status.setNodeCount(store.queryNodes().length);
       await checkAndRunReflection();
     } catch (err) {
+      status.recordError('transcript-scribe', err);
       console.warn(`[memrok] Scribe pass failed: ${err instanceof Error ? err.message : String(err)}`);
       throw err;
     }
   };
 
-  watcher.on('data', (_filePath: string, content: string) => {
+  watcher.on('data', (filePath: string, content: string) => {
+    lastSourceProcessed = filePath;
     pendingTranscriptChunks.push(content);
     const lines = content.split('\n').filter((line) => line.trim()).length;
     consolidation.recordMessages(lines);
@@ -436,7 +453,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
         if (!hasNonBootstrapPasses) {
           const workspaceDir =
             api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config) ?? process.cwd();
-          runBootstrap(store, scribe, config.bootstrap, workspaceDir).catch((err) => {
+          runBootstrap(store, scribe, config.bootstrap, workspaceDir).then(() => {
+            status.setNodeCount(store.queryNodes().length);
+          }).catch((err) => {
+            status.recordError('bootstrap', err);
             console.warn(
               `[memrok] Bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
             );
