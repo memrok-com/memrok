@@ -1,12 +1,6 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/2026-memrok-logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/2026-memrok-logo.svg">
-    <img src="assets/2026-memrok-logo.svg" alt="Memrok" width="320">
-  </picture>
-</p>
+![Memrok](assets/2026-memrok-logo.svg)
 
-<p align="center"><em>Memory with judgment.</em></p>
+*Memory with judgment.*
 
 ---
 

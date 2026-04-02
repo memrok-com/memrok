@@ -1,6 +1,6 @@
 ---
 name: memrok
-description: Persistent memory layer for OpenClaw agents — knowledge graph that learns from conversations and injects relevant context automatically.
+description: Persistent, structured, intelligent memory layer for OpenClaw AI agents.
 ---
 
 # Memrok

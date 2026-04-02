@@ -2,7 +2,7 @@
   "name": "memrok",
   "version": "0.3.1",
   "type": "module",
-  "description": "Persistent memory layer for OpenClaw AI agents",
+  "description": "Persistent, structured, intelligent memory layer for OpenClaw AI agents",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
