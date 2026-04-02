@@ -1,6 +1,6 @@
 ---
 name: memrok
-description: Persistent, structured, intelligent memory layer for OpenClaw AI agents.
+description: Memory with judgment. Persistent, structured, intelligent memory layer for OpenClaw AI agents.
 ---
 
 # Memrok

@@ -2,7 +2,7 @@
   "id": "memrok",
   "kind": "context-engine",
   "name": "Memrok Memory Layer",
-  "description": "Persistent, structured, intelligent memory layer for OpenClaw AI agents",
+  "description": "Memory with judgment. Persistent, structured, intelligent memory layer for OpenClaw AI agents.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

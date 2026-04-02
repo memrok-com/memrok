@@ -2,7 +2,7 @@
   "name": "memrok",
   "version": "0.3.2",
   "type": "module",
-  "description": "Persistent, structured, intelligent memory layer for OpenClaw AI agents",
+  "description": "Memory with judgment. Persistent, structured, intelligent memory layer for OpenClaw AI agents.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
