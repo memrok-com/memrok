@@ -105,12 +105,12 @@ All options are optional — defaults work without tuning.
 | Option                     | Type     | Default        | Description                              |
 | -------------------------- | -------- | -------------- | ---------------------------------------- |
 | `dbPath`                   | string   | state dir      | Path to the SQLite database              |
-| `scribeProvider`           | string   | —              | Model provider for the transcript scribe |
-| `scribeModel`              | string   | —              | Model for the transcript scribe          |
+| `scribeProvider`           | string   | `anthropic`    | Model provider for the transcript scribe |
+| `scribeModel`              | string   | `claude-sonnet-4-6` | Model for the transcript scribe     |
 | `watchPaths`               | string[] | session dirs   | Additional transcript paths to watch     |
-| `deltaThreshold`           | number   | 10             | Turns before triggering consolidation    |
+| `deltaThreshold`           | number   | 20             | Messages before triggering consolidation |
 | `idleMinutes`              | number   | 15             | Quiet time required before scribe runs   |
-| `tokenBudget`              | number   | 2000           | Max tokens for injected memory headers   |
+| `tokenBudget`              | number   | 1000           | Max tokens for injected memory headers   |
 | `reflection.enabled`       | boolean  | true           | Enable the reflective scribe             |
 | `reflection.deltaPasses`   | number   | 5              | Transcript passes between reflections    |
 | `reflection.cooldownHours` | number   | 24             | Minimum hours between reflection runs    |
