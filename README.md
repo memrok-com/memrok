@@ -1,4 +1,4 @@
-![Memrok](assets/2026-memrok-logo.svg)
+![Memrok](https://raw.githubusercontent.com/memrok-com/memrok/main/assets/2026-memrok-logo.svg)
 
 *Memory with judgment.*
 

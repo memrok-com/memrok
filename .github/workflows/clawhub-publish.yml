@@ -7,8 +7,41 @@ on:
 
 jobs:
   publish:
-    uses: openclaw/clawhub/.github/workflows/package-publish.yml@main
-    with:
-      dry_run: false
-    secrets:
-      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@e3914758a49697077f7bcd190d36582a61667aad
+        with:
+          bun-version: 1.3.10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build plugin
+        working-directory: packages/openclaw-plugin
+        run: npx tsup
+
+      - name: Login to ClawHub
+        run: bunx clawhub@latest login --no-browser --token "${{ secrets.CLAWHUB_TOKEN }}"
+
+      - name: Publish plugin package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          bunx clawhub@latest package publish ./packages/openclaw-plugin \
+            --family code-plugin \
+            --name memrok \
+            --display-name "Memrok" \
+            --version "$VERSION" \
+            --changelog "Release $VERSION" \
+            --source-repo memrok-com/memrok \
+            --source-commit "$GITHUB_SHA" \
+            --source-ref "$GITHUB_REF_NAME"
