@@ -412,15 +412,21 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
   const pendingTranscriptChunks: string[] = [];
   let lastSourceProcessed: string | null = null;
 
-  // Reflection state
-  let passesSinceReflection = 0;
-  let lastReflectionTime = 0;
+  // Reflection state — recover from DB so restarts don't reset the counters
+  const allPasses = store.listPasses();
+  const lastReflectionPass = [...allPasses].reverse().find((p) => p.source === 'reflection');
+  let passesSinceReflection = lastReflectionPass
+    ? allPasses.filter((p) => p.source !== 'reflection' && !p.source?.startsWith('bootstrap:') && p.timestamp > lastReflectionPass.timestamp).length
+    : allPasses.filter((p) => !p.source?.startsWith('bootstrap:')).length;
+  let lastReflectionTime = lastReflectionPass ? new Date(lastReflectionPass.timestamp).getTime() : 0;
+  console.log(`[memrok] Reflection state recovered: ${passesSinceReflection} passes since last reflection, lastReflectionTime=${lastReflectionTime ? new Date(lastReflectionTime).toISOString() : 'never'}`);
 
   const checkAndRunReflection = async (): Promise<void> => {
     if (!shouldRunReflection(passesSinceReflection, lastReflectionTime, config.reflection)) return;
     try {
       const graphState = serializeGraphForReflection(store);
       const pass = await reflectionScribe.callModel(graphState);
+      pass.source = 'reflection';
       store.applyPass(pass);
       injector.invalidate();
       passesSinceReflection = 0;
