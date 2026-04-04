@@ -1,5 +1,6 @@
-import { describe, it } from 'vitest';
+import { afterEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
+import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -32,6 +33,10 @@ function createApi(overrides: Partial<PluginApi> = {}): {
   };
   return { api, services, factories };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('openclaw plugin orchestration', () => {
   it('resolves plugin config defaults', () => {
@@ -289,6 +294,146 @@ describe('runReflectionPass', () => {
       assert.equal(invalidated, false);
     } finally {
       store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs reflection on service start when recovered state already qualifies', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-reflection-start-'));
+    const dbPath = join(dir, 'memrok.db');
+    const seededStore = createStore(dbPath);
+
+    try {
+      seededStore.applyPass({
+        pass_id: 'transcript-1',
+        source: 'session-1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'user',
+            category: 'preference',
+            key: 'user.preference.status',
+            value: 'Wants direct status updates.',
+          },
+        ],
+      });
+      seededStore.close();
+
+      const { api, services } = createApi({
+        pluginConfig: {
+          dbPath,
+          watchPaths: [dir],
+          bootstrap: { enabled: false },
+          reflection: {
+            enabled: true,
+            deltaPasses: 1,
+            cooldownHours: 0,
+          },
+        },
+        runtime: {
+          agent: {
+            runEmbeddedPiAgent: async () => ({
+              payloads: [
+                {
+                  text: '{"pass_id":"reflection-start","mutations":[]}',
+                },
+              ],
+            }),
+          },
+        },
+      });
+
+      const runtime = createPluginRegistration(api);
+      await services[0].start({ stateDir: dir });
+
+      const reflectionPasses = runtime.store.listPasses().filter((pass) => pass.source === 'reflection');
+      assert.equal(reflectionPasses.length, 1);
+
+      await services[0].stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs reflection from the timer after cooldown elapses without a new transcript pass', async () => {
+    vi.useFakeTimers();
+    const baseTime = new Date('2026-01-01T00:00:00.000Z');
+    vi.setSystemTime(baseTime);
+
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-reflection-timer-'));
+    const dbPath = join(dir, 'memrok.db');
+    const seededStore = createStore(dbPath);
+
+    try {
+      seededStore.applyPass({
+        pass_id: 'reflection-old',
+        source: 'reflection',
+        mutations: [],
+      });
+      seededStore.applyPass({
+        pass_id: 'transcript-after-reflection',
+        source: 'session-2',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'collaboration',
+            category: 'pattern',
+            key: 'collab.pattern.status',
+            value: 'Direct status updates work well.',
+          },
+        ],
+      });
+      seededStore.close();
+
+      const db = new Database(dbPath);
+      db.prepare('UPDATE passes SET timestamp = ? WHERE pass_id = ?').run('2026-01-01 00:00:00', 'reflection-old');
+      db.prepare('UPDATE passes SET timestamp = ? WHERE pass_id = ?').run('2026-01-01 01:00:00', 'transcript-after-reflection');
+      db.close();
+
+      let reflectionCalls = 0;
+      const { api, services } = createApi({
+        pluginConfig: {
+          dbPath,
+          watchPaths: [dir],
+          bootstrap: { enabled: false },
+          reflection: {
+            enabled: true,
+            deltaPasses: 1,
+            cooldownHours: 24,
+          },
+        },
+        runtime: {
+          agent: {
+            runEmbeddedPiAgent: async () => {
+              reflectionCalls++;
+              return {
+                payloads: [
+                  {
+                    text: '{"pass_id":"reflection-periodic","mutations":[]}',
+                  },
+                ],
+              };
+            },
+          },
+        },
+      });
+
+      const runtime = createPluginRegistration(api);
+      await services[0].start({ stateDir: dir });
+      assert.equal(runtime.store.listPasses().filter((pass) => pass.source === 'reflection').length, 1);
+
+      vi.setSystemTime(new Date(baseTime.getTime() + 25 * 60 * 60 * 1000));
+      await vi.advanceTimersByTimeAsync(60_000);
+      assert.equal(reflectionCalls, 1);
+      let reflectionPasses = runtime.store.listPasses().filter((pass) => pass.source === 'reflection');
+      for (let attempt = 0; reflectionPasses.length < 2 && attempt < 5; attempt++) {
+        await vi.advanceTimersByTimeAsync(0);
+        reflectionPasses = runtime.store.listPasses().filter((pass) => pass.source === 'reflection');
+      }
+      assert.equal(reflectionPasses.length, 2);
+
+      await services[0].stop();
+    } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });

@@ -28,6 +28,7 @@ const DEFAULT_TOKEN_BUDGET = 1000;
 const DEFAULT_REFLECTION_ENABLED = true;
 const DEFAULT_REFLECTION_DELTA_PASSES = 5;
 const DEFAULT_REFLECTION_COOLDOWN_HOURS = 24;
+const DEFAULT_REFLECTION_CHECK_INTERVAL_MS = 60_000;
 const DEFAULT_BOOTSTRAP_ENABLED = true;
 const DEFAULT_BOOTSTRAP_MAX_AGE_DAYS = 90;
 const DEFAULT_BOOTSTRAP_DELAY_MS = 10_000;
@@ -442,6 +443,7 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
   });
   const pendingTranscriptChunks: string[] = [];
   let lastSourceProcessed: string | null = null;
+  let reflectionCheckTimer: ReturnType<typeof setInterval> | null = null;
 
   // Reflection state — recover from DB so restarts don't reset the counters
   const allPasses = store.listPasses();
@@ -451,16 +453,25 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     : allPasses.filter((p) => !p.source?.startsWith('bootstrap:')).length;
   let lastReflectionTime = lastReflectionPass ? new Date(lastReflectionPass.timestamp).getTime() : 0;
   console.log(`[memrok] Reflection state recovered: ${passesSinceReflection} passes since last reflection, lastReflectionTime=${lastReflectionTime ? new Date(lastReflectionTime).toISOString() : 'never'}`);
+  let reflectionRunInFlight: Promise<void> | null = null;
 
   const checkAndRunReflection = async (): Promise<void> => {
-    if (!shouldRunReflection(passesSinceReflection, lastReflectionTime, config.reflection)) return;
-    try {
-      await runReflectionPass({ store, reflectionScribe, injector, status });
-      passesSinceReflection = 0;
-      lastReflectionTime = Date.now();
-    } catch (err) {
-      console.warn(`[memrok] Reflection pass failed: ${err instanceof Error ? err.message : String(err)}`);
+    if (reflectionRunInFlight) {
+      return reflectionRunInFlight;
     }
+    if (!shouldRunReflection(passesSinceReflection, lastReflectionTime, config.reflection)) return;
+    reflectionRunInFlight = (async () => {
+      try {
+        await runReflectionPass({ store, reflectionScribe, injector, status });
+        passesSinceReflection = 0;
+        lastReflectionTime = Date.now();
+      } catch (err) {
+        console.warn(`[memrok] Reflection pass failed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        reflectionRunInFlight = null;
+      }
+    })();
+    return reflectionRunInFlight;
   };
 
   const runScribePass = async () => {
@@ -502,6 +513,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
 
       watcher.start();
       consolidation.startLoop();
+      reflectionCheckTimer = setInterval(() => {
+        void checkAndRunReflection();
+      }, DEFAULT_REFLECTION_CHECK_INTERVAL_MS);
+      await checkAndRunReflection();
 
       // Auto-bootstrap: seed the graph from existing memory files if no
       // non-bootstrap passes have been recorded yet (i.e. fresh graph).
@@ -524,6 +539,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     },
     async stop() {
       consolidation.stopLoop();
+      if (reflectionCheckTimer) {
+        clearInterval(reflectionCheckTimer);
+        reflectionCheckTimer = null;
+      }
       watcher.stop();
       store.close();
     },
