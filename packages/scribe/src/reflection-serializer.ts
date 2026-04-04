@@ -7,6 +7,8 @@ export interface ReflectionSerializerOptions {
   minReferenceCount?: number;
   /** Include nodes with correction_count >= N regardless of age. Default: 1 */
   minCorrectionCount?: number;
+  /** Hard cap on serialized nodes after scoping. Default: 80 */
+  maxNodes?: number;
 }
 
 const LAYER_ORDER = ['user', 'agent', 'collaboration'] as const;
@@ -27,6 +29,15 @@ function formatNode(node: Node): string {
   return lines.join('\n');
 }
 
+function compareReflectionPriority(a: Node, b: Node): number {
+  return (
+    b.correction_count - a.correction_count ||
+    b.reference_count - a.reference_count ||
+    b.updated_at.localeCompare(a.updated_at) ||
+    a.key.localeCompare(b.key)
+  );
+}
+
 /**
  * Serializes a scoped view of the knowledge graph for the reflective scribe.
  *
@@ -45,6 +56,7 @@ export function serializeGraphForReflection(
   const recentDays = options?.recentDays ?? 30;
   const minReferenceCount = options?.minReferenceCount ?? 3;
   const minCorrectionCount = options?.minCorrectionCount ?? 1;
+  const maxNodes = options?.maxNodes ?? 80;
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - recentDays);
@@ -58,14 +70,22 @@ export function serializeGraphForReflection(
       node.reference_count >= minReferenceCount ||
       node.correction_count >= minCorrectionCount,
   );
+  const selected = scoped
+    .slice()
+    .sort(compareReflectionPriority)
+    .slice(0, Math.max(0, maxNodes));
 
   const lines: string[] = [];
   lines.push(
-    `Scope: ${scoped.length} nodes (from ${allNodes.length} active; ` +
-      `criteria: updated within ${recentDays}d OR ref≥${minReferenceCount} OR corrections≥${minCorrectionCount})`,
+    `Scope: ${selected.length} of ${scoped.length} scoped nodes (from ${allNodes.length} active; ` +
+      `criteria: updated within ${recentDays}d OR ref≥${minReferenceCount} OR corrections≥${minCorrectionCount}; ` +
+      `max=${maxNodes})`,
   );
+  if (scoped.length > selected.length) {
+    lines.push(`Truncated ${scoped.length - selected.length} lower-priority nodes from reflection input.`);
+  }
 
-  if (scoped.length === 0) {
+  if (selected.length === 0) {
     lines.push('');
     lines.push('No nodes match the reflection scope.');
     return lines.join('\n');
@@ -75,7 +95,7 @@ export function serializeGraphForReflection(
   for (const layer of LAYER_ORDER) {
     byLayer.set(layer, []);
   }
-  for (const node of scoped) {
+  for (const node of selected) {
     const arr = byLayer.get(node.layer);
     if (arr) {
       arr.push(node);

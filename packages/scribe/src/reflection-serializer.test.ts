@@ -17,7 +17,7 @@ describe('serializeGraphForReflection', () => {
     const { store, dir } = makeTmpStore();
     try {
       const out = serializeGraphForReflection(store);
-      assert.match(out, /0 nodes/);
+      assert.match(out, /Scope: 0 of 0 scoped nodes/);
       assert.match(out, /No nodes match/);
     } finally {
       store.close();
@@ -161,6 +161,51 @@ describe('serializeGraphForReflection', () => {
 
       const out = serializeGraphForReflection(store, { minCorrectionCount: 1 });
       assert.match(out, /corrections=1/);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('caps the serialized payload and keeps higher-priority nodes', () => {
+    const { store, dir } = makeTmpStore();
+    try {
+      for (let i = 0; i < 4; i++) {
+        store.applyPass({
+          pass_id: `p${i + 1}`,
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'fact',
+              key: `user.fact.${i}`,
+              value: `fact ${i}`,
+              signals: i === 3 ? { correction: true } : undefined,
+            },
+          ],
+        });
+      }
+
+      store.applyPass({
+        pass_id: 'p5',
+        mutations: [
+          {
+            operation: 'update',
+            layer: 'user',
+            category: 'fact',
+            key: 'user.fact.2',
+            value: 'fact 2',
+          },
+        ],
+      });
+
+      const out = serializeGraphForReflection(store, { maxNodes: 2, recentDays: 30, minReferenceCount: 999, minCorrectionCount: 1 });
+      assert.match(out, /Scope: 2 of 4 scoped nodes/);
+      assert.match(out, /Truncated 2 lower-priority nodes/);
+      assert.match(out, /user\.fact\.3/);
+      assert.match(out, /user\.fact\.2/);
+      assert.doesNotMatch(out, /user\.fact\.0/);
+      assert.doesNotMatch(out, /user\.fact\.1/);
     } finally {
       store.close();
       rmSync(dir, { recursive: true, force: true });

@@ -22,7 +22,9 @@ describe('StatusTracker', () => {
     const tracker = new StatusTracker(dbPath);
     tracker.setNodeCount(12);
     tracker.recordTranscriptScribe('topic-540.jsonl');
+    tracker.recordReflectiveScribeAttempt(256);
     tracker.recordReflectiveScribe();
+    tracker.recordReflectiveScribeFailure('call-model', new Error('reflection boom'));
     tracker.recordError('transcript-scribe', new Error('boom'));
 
     const path = getStatusFilePath(dbPath);
@@ -33,8 +35,13 @@ describe('StatusTracker', () => {
     assert.equal(parsed.lastSourceProcessed, 'topic-540.jsonl');
     assert.equal(parsed.lastErrorStage, 'transcript-scribe');
     assert.equal(parsed.lastErrorMessage, 'boom');
+    assert.equal(parsed.lastReflectiveScribeInputBytes, 256);
+    assert.equal(parsed.lastReflectiveScribeErrorStage, 'call-model');
+    assert.equal(parsed.lastReflectiveScribeErrorMessage, 'reflection boom');
     assert.ok(parsed.lastTranscriptScribeAt);
+    assert.ok(parsed.lastReflectiveScribeAttemptAt);
     assert.ok(parsed.lastReflectiveScribeAt);
+    assert.ok(parsed.lastReflectiveScribeFailureAt);
     assert.ok(parsed.updatedAt);
   });
 

@@ -377,6 +377,37 @@ export function shouldRunReflection(
   );
 }
 
+type ReflectionStage = 'serialize-graph' | 'call-model' | 'apply-pass';
+
+export async function runReflectionPass(params: {
+  store: Store;
+  reflectionScribe: ScribeInterface;
+  injector: Pick<Injector, 'invalidate'>;
+  status: StatusTracker;
+}): Promise<void> {
+  let stage: ReflectionStage = 'serialize-graph';
+  let graphState = '';
+
+  try {
+    graphState = serializeGraphForReflection(params.store);
+    params.status.recordReflectiveScribeAttempt(Buffer.byteLength(graphState, 'utf8'));
+
+    stage = 'call-model';
+    const pass = await params.reflectionScribe.callModel(graphState);
+    pass.source = 'reflection';
+
+    stage = 'apply-pass';
+    params.store.applyPass(pass);
+    params.injector.invalidate();
+    params.status.recordReflectiveScribe();
+    params.status.setNodeCount(params.store.queryNodes().length);
+  } catch (err) {
+    params.status.recordReflectiveScribeFailure(stage, err);
+    params.status.recordError('reflective-scribe', err);
+    throw err;
+  }
+}
+
 export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
   const config = resolveConfig(api.pluginConfig, api);
   mkdirSync(dirname(config.dbPath), { recursive: true });
@@ -424,17 +455,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
   const checkAndRunReflection = async (): Promise<void> => {
     if (!shouldRunReflection(passesSinceReflection, lastReflectionTime, config.reflection)) return;
     try {
-      const graphState = serializeGraphForReflection(store);
-      const pass = await reflectionScribe.callModel(graphState);
-      pass.source = 'reflection';
-      store.applyPass(pass);
-      injector.invalidate();
+      await runReflectionPass({ store, reflectionScribe, injector, status });
       passesSinceReflection = 0;
       lastReflectionTime = Date.now();
-      status.recordReflectiveScribe();
-      status.setNodeCount(store.queryNodes().length);
     } catch (err) {
-      status.recordError('reflective-scribe', err);
       console.warn(`[memrok] Reflection pass failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };

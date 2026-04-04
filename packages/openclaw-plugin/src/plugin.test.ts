@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createPluginRegistration, resolveConfig, shouldRunReflection } from './plugin.js';
+import { createStore } from '@memrok/store';
+import { createPluginRegistration, resolveConfig, runReflectionPass, shouldRunReflection } from './plugin.js';
 import type { ContextEngine, PluginApi, PluginService } from './types.js';
 
 function createApi(overrides: Partial<PluginApi> = {}): {
@@ -211,5 +212,84 @@ describe('shouldRunReflection', () => {
       shouldRunReflection(4, 0, baseConfig, now),
       false,
     );
+  });
+});
+
+describe('runReflectionPass', () => {
+  it('records reflection attempt metadata when the reflective scribe fails', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-reflection-status-'));
+    const dbPath = join(dir, 'memrok.db');
+    const store = createStore(dbPath);
+    const statusCalls: Record<string, unknown> = {};
+    const status = {
+      recordReflectiveScribeAttempt(inputBytes: number) {
+        statusCalls.lastReflectiveScribeAttemptAt = new Date().toISOString();
+        statusCalls.lastReflectiveScribeInputBytes = inputBytes;
+      },
+      recordReflectiveScribeFailure(stage: string, error: unknown) {
+        statusCalls.lastReflectiveScribeFailureAt = new Date().toISOString();
+        statusCalls.lastReflectiveScribeErrorStage = stage;
+        statusCalls.lastReflectiveScribeErrorMessage = error instanceof Error ? error.message : String(error);
+      },
+      recordReflectiveScribe() {
+        statusCalls.lastReflectiveScribeAt = new Date().toISOString();
+      },
+      recordError(stage: string, error: unknown) {
+        statusCalls.lastErrorStage = stage;
+        statusCalls.lastErrorMessage = error instanceof Error ? error.message : String(error);
+      },
+      setNodeCount(nodeCount: number) {
+        statusCalls.nodeCount = nodeCount;
+      },
+    };
+
+    try {
+      store.applyPass({
+        pass_id: 'p1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'user',
+            category: 'fact',
+            key: 'user.preference.tone',
+            value: 'Prefers direct status updates.',
+          },
+        ],
+      });
+
+      let invalidated = false;
+
+      await assert.rejects(
+        runReflectionPass({
+          store,
+          reflectionScribe: {
+            callModel: async () => {
+              throw new Error('reflection model boom');
+            },
+          } as never,
+          injector: {
+            invalidate() {
+              invalidated = true;
+            },
+          },
+          status: status as never,
+        }),
+        /reflection model boom/,
+      );
+
+      assert.ok(statusCalls.lastReflectiveScribeAttemptAt);
+      assert.ok(statusCalls.lastReflectiveScribeFailureAt);
+      assert.equal(statusCalls.lastReflectiveScribeErrorStage, 'call-model');
+      assert.equal(statusCalls.lastReflectiveScribeErrorMessage, 'reflection model boom');
+      assert.equal(statusCalls.lastErrorStage, 'reflective-scribe');
+      assert.equal(statusCalls.lastErrorMessage, 'reflection model boom');
+      assert.equal(statusCalls.lastReflectiveScribeAt, undefined);
+      assert.equal(typeof statusCalls.lastReflectiveScribeInputBytes, 'number');
+      assert.ok((statusCalls.lastReflectiveScribeInputBytes as number) > 0);
+      assert.equal(invalidated, false);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

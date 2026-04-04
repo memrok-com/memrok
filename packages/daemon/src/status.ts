@@ -5,6 +5,11 @@ export interface MemrokActivityStatus {
   nodeCount: number;
   lastTranscriptScribeAt: string | null;
   lastReflectiveScribeAt: string | null;
+  lastReflectiveScribeAttemptAt: string | null;
+  lastReflectiveScribeFailureAt: string | null;
+  lastReflectiveScribeErrorMessage: string | null;
+  lastReflectiveScribeErrorStage: string | null;
+  lastReflectiveScribeInputBytes: number | null;
   lastInjectionAt: string | null;
   lastErrorAt: string | null;
   lastErrorMessage: string | null;
@@ -17,6 +22,11 @@ const DEFAULT_STATUS: MemrokActivityStatus = {
   nodeCount: 0,
   lastTranscriptScribeAt: null,
   lastReflectiveScribeAt: null,
+  lastReflectiveScribeAttemptAt: null,
+  lastReflectiveScribeFailureAt: null,
+  lastReflectiveScribeErrorMessage: null,
+  lastReflectiveScribeErrorStage: null,
+  lastReflectiveScribeInputBytes: null,
   lastInjectionAt: null,
   lastErrorAt: null,
   lastErrorMessage: null,
@@ -61,6 +71,22 @@ export class StatusTracker {
 
   recordReflectiveScribe(): void {
     this.write({ lastReflectiveScribeAt: new Date().toISOString() });
+  }
+
+  recordReflectiveScribeAttempt(inputBytes: number): void {
+    this.write({
+      lastReflectiveScribeAttemptAt: new Date().toISOString(),
+      lastReflectiveScribeInputBytes: inputBytes,
+    });
+  }
+
+  recordReflectiveScribeFailure(stage: string, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.write({
+      lastReflectiveScribeFailureAt: new Date().toISOString(),
+      lastReflectiveScribeErrorStage: stage,
+      lastReflectiveScribeErrorMessage: message,
+    });
   }
 
   recordInjection(): void {
