@@ -51,4 +51,11 @@ describe('ScribeInterface', () => {
     const scribe = new ScribeInterface(async () => '{"pass_id":"ignored","mutations":[]}');
     assert.throws(() => scribe.parseResponse('{"mutations":[]}'), /missing pass_id or mutations/);
   });
+
+  it('drops mutations with missing required fields like category', () => {
+    const scribe = new ScribeInterface(async () => '{"pass_id":"ignored","mutations":[]}');
+    const pass = scribe.parseResponse('{"pass_id":"p4","mutations":[{"operation":"add","layer":"user","key":"user.test","value":"hello"}]}');
+    assert.equal(pass.pass_id, 'p4');
+    assert.equal(pass.mutations.length, 0);
+  });
 });

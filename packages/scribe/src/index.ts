@@ -76,6 +76,18 @@ export class ScribeInterface {
         console.warn(`[scribe] Dropping mutation with invalid layer: ${String(mut.layer)}`);
         return false;
       }
+      if (typeof mut.category !== 'string' || mut.category.trim() === '') {
+        console.warn('[scribe] Dropping mutation with missing category');
+        return false;
+      }
+      if (typeof mut.key !== 'string' || mut.key.trim() === '') {
+        console.warn('[scribe] Dropping mutation with missing key');
+        return false;
+      }
+      if (typeof mut.value !== 'string') {
+        console.warn('[scribe] Dropping mutation with missing value');
+        return false;
+      }
       if (typeof mut.key === 'string' && mut.key.length > MAX_KEY_LENGTH) {
         console.warn(
           `[scribe] Dropping mutation with key exceeding ${MAX_KEY_LENGTH} chars: ${mut.key.slice(0, 50)}...`,
