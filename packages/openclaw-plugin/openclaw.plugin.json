@@ -10,6 +10,17 @@
       "dbPath": { "type": "string" },
       "scribeProvider": { "type": "string" },
       "scribeModel": { "type": "string" },
+      "reflection": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "deltaPasses": { "type": "number" },
+          "cooldownHours": { "type": "number" },
+          "provider": { "type": "string" },
+          "model": { "type": "string" }
+        }
+      },
       "watchPaths": {
         "type": "array",
         "items": { "type": "string" }

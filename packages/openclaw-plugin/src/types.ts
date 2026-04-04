@@ -7,9 +7,9 @@ export interface ReflectionConfig {
   deltaPasses?: number;
   /** Minimum hours between reflections. Default: 24 */
   cooldownHours?: number;
-  /** Model for reflection (defaults to scribeModel). Reflection benefits from a capable model. */
+  /** Model override for reflection. If omitted, inherits explicit scribeModel when set. */
   model?: string;
-  /** Provider for reflection model (defaults to scribeProvider). */
+  /** Provider override for reflection. If omitted, inherits explicit scribeProvider when set. */
   provider?: string;
 }
 
@@ -42,8 +42,8 @@ export interface ResolvedReflectionConfig {
   enabled: boolean;
   deltaPasses: number;
   cooldownHours: number;
-  model: string;
-  provider: string;
+  model?: string;
+  provider?: string;
 }
 
 export interface ResolvedBootstrapConfig {
@@ -56,8 +56,8 @@ export interface ResolvedBootstrapConfig {
 
 export interface ResolvedConfig {
   dbPath: string;
-  scribeProvider: string;
-  scribeModel: string;
+  scribeProvider?: string;
+  scribeModel?: string;
   watchPaths: string[];
   deltaThreshold: number;
   idleMinutes: number;

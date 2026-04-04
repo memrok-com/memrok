@@ -20,8 +20,6 @@ import type {
 } from './types.js';
 
 const DEFAULT_DB_PATH = '~/.memrok/memrok.db';
-const DEFAULT_PROVIDER = 'anthropic';
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_DELTA_THRESHOLD = 20;
 const DEFAULT_IDLE_MINUTES = 15;
 const DEFAULT_TOKEN_BUDGET = 1000;
@@ -104,8 +102,8 @@ export function resolveConfig(
   api?: PluginApi,
 ): ResolvedConfig {
   const config = (raw ?? {}) as MemrokPluginConfig;
-  const scribeProvider = config.scribeProvider ?? DEFAULT_PROVIDER;
-  const scribeModel = config.scribeModel ?? DEFAULT_MODEL;
+  const scribeProvider = config.scribeProvider;
+  const scribeModel = config.scribeModel;
   const reflection: ResolvedReflectionConfig = {
     enabled: config.reflection?.enabled ?? DEFAULT_REFLECTION_ENABLED,
     deltaPasses: config.reflection?.deltaPasses ?? DEFAULT_REFLECTION_DELTA_PASSES,

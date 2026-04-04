@@ -55,8 +55,12 @@ Then activate Memrok as your context engine. Add to your `openclaw.json` (or use
       "memrok": {
         "enabled": true,
         "config": {
-          "scribeProvider": "anthropic",
-          "scribeModel": "claude-sonnet-4-6"
+          "scribeProvider": "openai",
+          "scribeModel": "gpt-5-mini",
+          "reflection": {
+            "provider": "openai",
+            "model": "gpt-5"
+          }
         }
       }
     }
@@ -65,6 +69,8 @@ Then activate Memrok as your context engine. Add to your `openclaw.json` (or use
 ```
 
 Restart OpenClaw. Memrok watches session transcripts automatically and begins curating after the first idle window.
+
+Set both transcript and reflection provider/model explicitly in the plugin config if you do not want Memrok falling back to its built-in defaults.
 
 ## Privacy & Data Flow
 
@@ -100,13 +106,13 @@ packages/
 
 ### Configuration
 
-All options are optional — defaults work without tuning.
+Most options are optional, but scribe provider/model should be set explicitly through OpenClaw config instead of relying on Memrok-owned defaults.
 
 | Option                     | Type     | Default        | Description                              |
 | -------------------------- | -------- | -------------- | ---------------------------------------- |
 | `dbPath`                   | string   | state dir      | Path to the SQLite database              |
-| `scribeProvider`           | string   | `anthropic`    | Model provider for the transcript scribe |
-| `scribeModel`              | string   | `claude-sonnet-4-6` | Model for the transcript scribe     |
+| `scribeProvider`           | string   | none           | Model provider for the transcript scribe; set explicitly in OpenClaw config |
+| `scribeModel`              | string   | none           | Model for the transcript scribe; set explicitly in OpenClaw config |
 | `watchPaths`               | string[] | session dirs   | Additional transcript paths to watch     |
 | `deltaThreshold`           | number   | 20             | Messages before triggering consolidation |
 | `idleMinutes`              | number   | 15             | Quiet time required before scribe runs   |
@@ -114,8 +120,8 @@ All options are optional — defaults work without tuning.
 | `reflection.enabled`       | boolean  | true           | Enable the reflective scribe             |
 | `reflection.deltaPasses`   | number   | 5              | Transcript passes between reflections    |
 | `reflection.cooldownHours` | number   | 24             | Minimum hours between reflection runs    |
-| `reflection.model`         | string   | scribeModel    | Override model for reflection            |
-| `reflection.provider`      | string   | scribeProvider | Override provider for reflection         |
+| `reflection.model`         | string   | scribeModel    | Override model for reflection; otherwise inherits explicit transcript model |
+| `reflection.provider`      | string   | scribeProvider | Override provider for reflection; otherwise inherits explicit transcript provider |
 
 ## Status
 

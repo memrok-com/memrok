@@ -42,8 +42,8 @@ describe('openclaw plugin orchestration', () => {
   it('resolves plugin config defaults', () => {
     const { api } = createApi();
     const resolved = resolveConfig({}, api);
-    assert.equal(resolved.scribeProvider, 'anthropic');
-    assert.equal(resolved.scribeModel, 'claude-sonnet-4-6');
+    assert.equal(resolved.scribeProvider, undefined);
+    assert.equal(resolved.scribeModel, undefined);
     assert.equal(resolved.deltaThreshold, 20);
     assert.equal(resolved.idleMinutes, 15);
     assert.equal(resolved.tokenBudget, 1000);
@@ -56,26 +56,43 @@ describe('openclaw plugin orchestration', () => {
     assert.equal(resolved.reflection.enabled, true);
     assert.equal(resolved.reflection.deltaPasses, 5);
     assert.equal(resolved.reflection.cooldownHours, 24);
-    // Inherits scribe model/provider when not specified
-    assert.equal(resolved.reflection.model, resolved.scribeModel);
-    assert.equal(resolved.reflection.provider, resolved.scribeProvider);
+    assert.equal(resolved.reflection.model, undefined);
+    assert.equal(resolved.reflection.provider, undefined);
   });
 
   it('resolves reflection config overrides', () => {
     const { api } = createApi();
     const resolved = resolveConfig({
+      scribeProvider: 'openai',
+      scribeModel: 'gpt-5-mini',
       reflection: {
         enabled: false,
         deltaPasses: 10,
         cooldownHours: 48,
-        model: 'claude-opus-4-6',
-        provider: 'anthropic',
+        model: 'gpt-5',
+        provider: 'openai',
       },
     }, api);
+    assert.equal(resolved.scribeProvider, 'openai');
+    assert.equal(resolved.scribeModel, 'gpt-5-mini');
     assert.equal(resolved.reflection.enabled, false);
     assert.equal(resolved.reflection.deltaPasses, 10);
     assert.equal(resolved.reflection.cooldownHours, 48);
-    assert.equal(resolved.reflection.model, 'claude-opus-4-6');
+    assert.equal(resolved.reflection.model, 'gpt-5');
+    assert.equal(resolved.reflection.provider, 'openai');
+  });
+
+  it('inherits explicit transcript provider and model for reflection when unset', () => {
+    const { api } = createApi();
+    const resolved = resolveConfig({
+      scribeProvider: 'openai',
+      scribeModel: 'gpt-5-mini',
+    }, api);
+
+    assert.equal(resolved.scribeProvider, 'openai');
+    assert.equal(resolved.scribeModel, 'gpt-5-mini');
+    assert.equal(resolved.reflection.provider, 'openai');
+    assert.equal(resolved.reflection.model, 'gpt-5-mini');
   });
 
   it('registers a direct context engine and background service', async () => {
