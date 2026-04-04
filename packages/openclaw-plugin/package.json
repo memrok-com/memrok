@@ -1,6 +1,6 @@
 {
   "name": "memrok",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "type": "module",
   "description": "Memory with judgment. Persistent, structured, intelligent memory layer for OpenClaw AI agents.",
   "main": "dist/index.js",
@@ -37,10 +37,10 @@
   "dependencies": {
     "better-sqlite3": "^11.9.1",
     "chokidar": "^4.0.3",
-    "@memrok/daemon": "0.3.3",
-    "@memrok/injector": "0.3.3",
-    "@memrok/scribe": "0.3.3",
-    "@memrok/store": "0.3.3"
+    "@memrok/daemon": "0.3.4",
+    "@memrok/injector": "0.3.4",
+    "@memrok/scribe": "0.3.4",
+    "@memrok/store": "0.3.4"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
