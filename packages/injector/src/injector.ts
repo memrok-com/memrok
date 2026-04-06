@@ -49,19 +49,20 @@ function tokenize(text: string): Set<string> {
   );
 }
 
+function similarityScore(a: string, b: string): number {
+  const aSet = tokenize(a);
+  const bSet = tokenize(b);
+  if (aSet.size === 0 || bSet.size === 0) return 0;
+  let intersection = 0;
+  for (const token of aSet) {
+    if (bSet.has(token)) intersection++;
+  }
+  const union = new Set([...aSet, ...bSet]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
 function isNearDuplicate(candidate: string, selected: string[]): boolean {
-  const candidateSet = tokenize(candidate);
-  if (candidateSet.size === 0) return false;
-  return selected.some((existing) => {
-    const existingSet = tokenize(existing);
-    let intersection = 0;
-    for (const token of candidateSet) {
-      if (existingSet.has(token)) intersection++;
-    }
-    const union = new Set([...candidateSet, ...existingSet]).size;
-    const similarity = union === 0 ? 0 : intersection / union;
-    return similarity >= 0.75;
-  });
+  return selected.some((existing) => similarityScore(candidate, existing) >= 0.75);
 }
 
 interface KeywordCache {
@@ -258,10 +259,27 @@ export function createInjector(
       let sectionTokens = estimateTokens(sectionHeader);
       const lines: string[] = [];
 
-      for (const { node, score } of entries) {
+      const remaining = [...entries];
+      while (remaining.length > 0) {
+        let bestIndex = -1;
+        let bestAdjustedScore = -Infinity;
+        for (let i = 0; i < remaining.length; i++) {
+          const candidate = remaining[i];
+          const categoryKey = `${candidate.node.layer}:${candidate.node.category}`;
+          if ((categoryCounts.get(categoryKey) ?? 0) >= 2) continue;
+          const maxSimilarity = selectedValues.length === 0
+            ? 0
+            : Math.max(...selectedValues.map((value) => similarityScore(candidate.node.value, value)));
+          const adjustedScore = candidate.score - (maxSimilarity * 0.15);
+          if (adjustedScore > bestAdjustedScore) {
+            bestAdjustedScore = adjustedScore;
+            bestIndex = i;
+          }
+        }
+        if (bestIndex === -1) break;
+        const { node, score } = remaining.splice(bestIndex, 1)[0];
         if (isNearDuplicate(node.value, selectedValues)) continue;
         const categoryKey = `${node.layer}:${node.category}`;
-        if ((categoryCounts.get(categoryKey) ?? 0) >= 2) continue;
         const line = `- ${truncateValue(node.value, maxNodeChars)}\n`;
         const lineTokens = estimateTokens(line);
         if (sectionTokens + lineTokens > budget) break;
@@ -273,7 +291,7 @@ export function createInjector(
           layer,
           category: node.category,
           value: node.value,
-          score,
+          score: bestAdjustedScore,
           updatedAt: node.updated_at,
           referenceCount: node.reference_count,
           correctionCount: node.correction_count,

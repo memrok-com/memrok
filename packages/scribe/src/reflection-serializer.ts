@@ -1,4 +1,4 @@
-import type { Node, Store } from '@memrok/store';
+import type { Node, Pass, Store } from '@memrok/store';
 
 export interface ReflectionSerializerOptions {
   /** Include nodes updated within last N days. Default: 30 */
@@ -12,6 +12,11 @@ export interface ReflectionSerializerOptions {
 }
 
 const LAYER_ORDER = ['user', 'agent', 'collaboration'] as const;
+
+function looksLikeSnapshotNode(node: Node): boolean {
+  const haystack = `${node.key} ${node.value}`.toLowerCase();
+  return /\b(as of|status|node count|graph nodes|scribe passes|updated at|current state|snapshot)\b/.test(haystack);
+}
 
 function formatNode(node: Node): string {
   const lines: string[] = [];
@@ -27,6 +32,15 @@ function formatNode(node: Node): string {
   ];
   lines.push(`  stats: ${flags.join(', ')}`);
   return lines.join('\n');
+}
+
+function formatPass(pass: Pass): string {
+  return [
+    `- ${pass.timestamp}`,
+    pass.source ? `source=${pass.source}` : null,
+    pass.mutations_count != null ? `mutations=${pass.mutations_count}` : null,
+    pass.observations ? `observations=${pass.observations}` : null,
+  ].filter(Boolean).join(' | ');
 }
 
 function compareReflectionPriority(a: Node, b: Node): number {
@@ -63,6 +77,9 @@ export function serializeGraphForReflection(
   const cutoffIso = cutoff.toISOString();
 
   const allNodes = store.queryNodes({ active: true });
+  const recentPasses = store.listPasses()
+    .filter((pass) => pass.source !== 'reflection' && !pass.source?.startsWith('bootstrap:'))
+    .slice(-8);
 
   const scoped = allNodes.filter(
     (node) =>
@@ -74,6 +91,10 @@ export function serializeGraphForReflection(
     .slice()
     .sort(compareReflectionPriority)
     .slice(0, Math.max(0, maxNodes));
+  const staleCandidates = allNodes
+    .filter((node) => looksLikeSnapshotNode(node))
+    .sort((a, b) => a.updated_at.localeCompare(b.updated_at))
+    .slice(0, 12);
 
   const lines: string[] = [];
   lines.push(
@@ -83,6 +104,20 @@ export function serializeGraphForReflection(
   );
   if (scoped.length > selected.length) {
     lines.push(`Truncated ${scoped.length - selected.length} lower-priority nodes from reflection input.`);
+  }
+  if (recentPasses.length > 0) {
+    lines.push('');
+    lines.push('## RECENT PASSES');
+    for (const pass of recentPasses) lines.push(formatPass(pass));
+  }
+  if (staleCandidates.length > 0) {
+    lines.push('');
+    lines.push('## CANDIDATE STALE OR SUPERSEDED NODES');
+    lines.push('Review these aggressively for expiry, replacement, or demotion if newer evidence exists.');
+    lines.push('');
+    for (const node of staleCandidates) {
+      lines.push(formatNode(node));
+    }
   }
 
   if (selected.length === 0) {

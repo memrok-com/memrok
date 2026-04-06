@@ -167,6 +167,45 @@ describe('serializeGraphForReflection', () => {
     }
   });
 
+  it('includes recent pass summaries and stale candidate hints', () => {
+    const { store, dir } = makeTmpStore();
+    try {
+      store.applyPass({
+        pass_id: 'p1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'user',
+            category: 'fact',
+            key: 'user.memrok.status',
+            value: 'Memrok is live with 33 graph nodes as of 2026-04-01.',
+          },
+        ],
+      });
+      store.applyPass({
+        pass_id: 'p2',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'collaboration',
+            category: 'process',
+            key: 'collab.process.loop',
+            value: 'Inspect, patch, rebuild, compare.',
+          },
+        ],
+      });
+
+      const out = serializeGraphForReflection(store);
+      assert.match(out, /## RECENT PASSES/);
+      assert.match(out, /mutations=1/);
+      assert.match(out, /## CANDIDATE STALE OR SUPERSEDED NODES/);
+      assert.match(out, /user\.memrok\.status/);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('caps the serialized payload and keeps higher-priority nodes', () => {
     const { store, dir } = makeTmpStore();
     try {
