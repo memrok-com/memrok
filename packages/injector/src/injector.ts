@@ -3,6 +3,7 @@ import type {
   InjectorConfig,
   RelevanceWeights,
   ContextHeader,
+  ContextHeaderDebugNode,
   Injector,
 } from './types.js';
 
@@ -223,6 +224,7 @@ export function createInjector(
     const remainingBudget = tokenBudget - prefixTokens;
 
     const sections: string[] = [];
+    const debugNodes: ContextHeaderDebugNode[] = [];
     const layerCounts: Record<LayerName, number> = {
       user: 0,
       agent: 0,
@@ -239,11 +241,21 @@ export function createInjector(
       let sectionTokens = estimateTokens(sectionHeader);
       const lines: string[] = [];
 
-      for (const { node } of entries) {
+      for (const { node, score } of entries) {
         const line = `- ${truncateValue(node.value, maxNodeChars)}\n`;
         const lineTokens = estimateTokens(line);
         if (sectionTokens + lineTokens > budget) break;
         lines.push(line);
+        debugNodes.push({
+          key: node.key,
+          layer,
+          category: node.category,
+          value: node.value,
+          score,
+          updatedAt: node.updated_at,
+          referenceCount: node.reference_count,
+          correctionCount: node.correction_count,
+        });
         sectionTokens += lineTokens;
         layerCounts[layer]++;
         totalNodesUsed++;
@@ -263,6 +275,7 @@ export function createInjector(
       tokens: estimateTokens(text),
       nodesUsed: totalNodesUsed,
       layers: layerCounts,
+      debugNodes,
       assemblyMs,
     };
 

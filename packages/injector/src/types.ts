@@ -25,6 +25,17 @@ export interface RelevanceWeights {
   semantic: number;
 }
 
+export interface ContextHeaderDebugNode {
+  key: string;
+  layer: 'user' | 'agent' | 'collaboration';
+  category: string;
+  value: string;
+  score: number;
+  updatedAt: string;
+  referenceCount: number;
+  correctionCount: number;
+}
+
 export interface ContextHeader {
   text: string;
   tokens: number;
@@ -34,6 +45,7 @@ export interface ContextHeader {
     agent: number;
     collaboration: number;
   };
+  debugNodes?: ContextHeaderDebugNode[];
   cachedAt?: number;
   assemblyMs: number;
 }

@@ -30,6 +30,7 @@ describe('injector', () => {
       assert.equal(header.text, '');
       assert.equal(header.tokens, 0);
       assert.equal(header.nodesUsed, 0);
+      assert.deepEqual(header.debugNodes, []);
       assert.equal(header.layers.user, 0);
       assert.equal(header.layers.agent, 0);
       assert.equal(header.layers.collaboration, 0);
@@ -79,6 +80,8 @@ describe('injector', () => {
       assert.ok(header.text.includes('Prefers blunt, punchy tone'));
       assert.ok(header.text.includes('Tends to open from biography'));
       assert.ok(header.text.includes('User steers via conceptual framing'));
+      assert.equal(header.debugNodes?.length, 3);
+      assert.equal(header.debugNodes?.[0]?.layer, 'user');
       assert.equal(header.nodesUsed, 3);
       assert.equal(header.layers.user, 1);
       assert.equal(header.layers.agent, 1);
