@@ -22,6 +22,7 @@ Return a single JSON object. No prose, no markdown fences, no commentary. Start 
     {
       "operation": "add|update|expire",
       "layer": "user|agent|collaboration",
+      "category": "fact|preference|pattern|decision|priority|skill|failure_mode|dynamic|trust|friction|process|relationship|belief|mode_switch|correction",
       "key": "<dot.separated.key>",
       "value": "<insight — first person, concise>",
       "evidence": "<node keys that support this insight>"
@@ -35,7 +36,7 @@ Return a single JSON object. No prose, no markdown fences, no commentary. Start 
 1. **Meta-patterns**: recurring themes across multiple nodes. "I keep seeing X in different contexts — the common thread is Y."
 2. **Contradictions**: nodes that tension against each other. Don't just flag them — **resolve them** when the evidence clearly favors one side. Expire the weaker node with an explanation. If the evidence is genuinely ambiguous, update both nodes to acknowledge the tension explicitly.
 3. **Vague-to-specific conversion**: nodes with hedging language ("tends to", "sometimes", "often") that accumulated evidence can now sharpen. If three separate observations support the same pattern, upgrade the node from vague to specific. "Sometimes prefers direct feedback" → "Consistently rejects softened feedback; every documented correction was blunt and immediate." Only sharpen when evidence warrants it.
-4. **Staleness**: nodes that were situational, not durable. Expire them with a clear reason. Be aggressive here — a graph full of stale nodes degrades injection quality.
+4. **Staleness**: nodes that were situational, not durable. Expire them with a clear reason. Be aggressive here — a graph full of stale nodes degrades injection quality. Treat status snapshots, counts, temporary operational state, and anything containing "as of" dates as high-suspicion candidates for expiry or replacement when newer evidence exists.
 5. **Growth edges**: areas where the agent's understanding is thin or untested. "I have strong beliefs about X but haven't tested them against Y."
 6. **Relationship dynamics**: patterns in the collaboration layer that reveal how the working relationship is evolving.
 7. **Blind spots**: what's conspicuously absent from the graph? What should be known but isn't tracked?
@@ -58,8 +59,8 @@ Do NOT emit:
 ## Operations
 
 - **add**: genuinely new synthesis not derivable from any single existing node
-- **update**: deepen or reframe an existing node based on accumulated evidence. Use the exact key of the node being updated. This includes sharpening vague nodes into specific claims when evidence supports it.
-- **expire**: mark a node as no longer current. Value should explain why. This includes the losing side of resolved contradictions. Be proactive — expiring stale or contradicted nodes is as valuable as adding new ones.
+- **update**: deepen or reframe an existing node based on accumulated evidence. Use the exact key of the node being updated. This includes sharpening vague nodes into specific claims when evidence supports it and replacing outdated status snapshots with current truth.
+- **expire**: mark a node as no longer current. Value should explain why. This includes the losing side of resolved contradictions. Be proactive — expiring stale or contradicted nodes is as valuable as adding new ones, especially for obsolete operational facts.
 
 ## Style
 
@@ -70,6 +71,7 @@ Do NOT emit:
 
 ## Constraints
 
+- Every mutation MUST include a non-empty `category`.
 - Maximum 15 mutations per pass (quality over quantity)
 - Prefer fewer, sharper insights over comprehensive coverage
 - If the graph is thin, say so with fewer mutations rather than padding

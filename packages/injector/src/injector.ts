@@ -49,6 +49,21 @@ function tokenize(text: string): Set<string> {
   );
 }
 
+function isNearDuplicate(candidate: string, selected: string[]): boolean {
+  const candidateSet = tokenize(candidate);
+  if (candidateSet.size === 0) return false;
+  return selected.some((existing) => {
+    const existingSet = tokenize(existing);
+    let intersection = 0;
+    for (const token of candidateSet) {
+      if (existingSet.has(token)) intersection++;
+    }
+    const union = new Set([...candidateSet, ...existingSet]).size;
+    const similarity = union === 0 ? 0 : intersection / union;
+    return similarity >= 0.75;
+  });
+}
+
 interface KeywordCache {
   nodeKeywords: Map<string, Set<string>>;
   idf: Map<string, number>;
@@ -225,6 +240,8 @@ export function createInjector(
 
     const sections: string[] = [];
     const debugNodes: ContextHeaderDebugNode[] = [];
+    const selectedValues: string[] = [];
+    const categoryCounts = new Map<string, number>();
     const layerCounts: Record<LayerName, number> = {
       user: 0,
       agent: 0,
@@ -242,10 +259,15 @@ export function createInjector(
       const lines: string[] = [];
 
       for (const { node, score } of entries) {
+        if (isNearDuplicate(node.value, selectedValues)) continue;
+        const categoryKey = `${node.layer}:${node.category}`;
+        if ((categoryCounts.get(categoryKey) ?? 0) >= 2) continue;
         const line = `- ${truncateValue(node.value, maxNodeChars)}\n`;
         const lineTokens = estimateTokens(line);
         if (sectionTokens + lineTokens > budget) break;
         lines.push(line);
+        selectedValues.push(node.value);
+        categoryCounts.set(categoryKey, (categoryCounts.get(categoryKey) ?? 0) + 1);
         debugNodes.push({
           key: node.key,
           layer,

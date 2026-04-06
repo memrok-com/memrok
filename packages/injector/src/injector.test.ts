@@ -88,6 +88,54 @@ describe('injector', () => {
       assert.equal(header.layers.collaboration, 1);
       assert.ok(header.tokens > 0);
     });
+
+    it('suppresses near-duplicate node values across the header', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-dup',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'belief',
+              key: 'user/memrok-1',
+              value: 'Build Memrok because it is useful to us and open-source it for others.',
+            },
+            {
+              operation: 'add',
+              layer: 'agent',
+              category: 'belief',
+              key: 'agent/memrok-2',
+              value: 'Build Memrok because it is useful to us and open source it for others.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store);
+      const header = injector.assemble({ recentMessages: 'We are evaluating Memrok itself.' });
+
+      assert.equal(header.debugNodes?.length, 1);
+      assert.equal(header.nodesUsed, 1);
+    });
+
+    it('caps repeated categories within a layer', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-cap',
+          mutations: [
+            { operation: 'add', layer: 'user', category: 'belief', key: 'u1', value: 'Belief one about Memrok.' },
+            { operation: 'add', layer: 'user', category: 'belief', key: 'u2', value: 'Belief two about Memrok.' },
+            { operation: 'add', layer: 'user', category: 'belief', key: 'u3', value: 'Belief three about Memrok.' },
+          ],
+        })
+      );
+
+      const injector = createInjector(store);
+      const header = injector.assemble({ recentMessages: 'We are evaluating Memrok itself.' });
+
+      assert.equal((header.debugNodes ?? []).filter((n) => n.layer === 'user' && n.category === 'belief').length, 2);
+    });
   });
 
   describe('relevance scoring', () => {
@@ -276,12 +324,12 @@ describe('injector', () => {
       const header = injector.assemble();
 
       assert.ok(
-        header.layers.user > header.layers.agent,
-        'User layer should have more nodes than agent'
+        header.layers.user >= header.layers.agent,
+        'User layer should have at least as many nodes as agent'
       );
       assert.ok(
-        header.layers.user > header.layers.collaboration,
-        'User layer should have more nodes than collaboration'
+        header.layers.user >= header.layers.collaboration,
+        'User layer should have at least as many nodes as collaboration'
       );
     });
   });
