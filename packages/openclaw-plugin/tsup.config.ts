@@ -7,6 +7,6 @@ export default {
   outDir: 'dist',
   external: ['better-sqlite3', 'chokidar'],
   noExternal: [/^@memrok\//],
-  clean: false,
+  clean: true,
   onSuccess: 'cp ../scribe/src/system-prompt.md ../scribe/src/reflection-prompt.md dist/',
 };

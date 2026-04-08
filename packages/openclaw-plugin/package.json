@@ -30,17 +30,14 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsup && tsc --emitDeclarationOnly --declaration --declarationMap --composite false --incremental false --declarationDir dist",
     "bundle": "tsup",
+    "prepack": "tsup && tsc --emitDeclarationOnly --declaration --declarationMap --composite false --incremental false --declarationDir dist",
     "test": "vitest run"
   },
   "dependencies": {
     "better-sqlite3": "^11.9.1",
-    "chokidar": "^4.0.3",
-    "@memrok/daemon": "0.4.0",
-    "@memrok/injector": "0.4.0",
-    "@memrok/scribe": "0.4.0",
-    "@memrok/store": "0.4.0"
+    "chokidar": "^4.0.3"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
