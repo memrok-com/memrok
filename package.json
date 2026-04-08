@@ -1,6 +1,6 @@
 {
   "name": "memrok",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "private": true,
   "description": "Memory with judgment. Graph-based curation layer for OpenClaw agents, complementing built-in recall and dreaming.",
   "workspaces": [
