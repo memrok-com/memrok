@@ -20,7 +20,7 @@ describe('StatusTracker', () => {
 
   it('writes a status file beside the db', () => {
     const tracker = new StatusTracker(dbPath);
-    tracker.setNodeCount(12);
+    tracker.setNodeLifecycleCounts(12, 4);
     tracker.recordTranscriptScribe('topic-540.jsonl');
     tracker.recordReflectiveScribeAttempt(256);
     tracker.recordReflectiveScribe();
@@ -32,6 +32,8 @@ describe('StatusTracker', () => {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
 
     assert.equal(parsed.nodeCount, 12);
+    assert.equal(parsed.activeNodeCount, 12);
+    assert.equal(parsed.expiredNodeCount, 4);
     assert.equal(parsed.lastSourceProcessed, 'topic-540.jsonl');
     assert.equal(parsed.lastErrorStage, 'transcript-scribe');
     assert.equal(parsed.lastErrorMessage, 'boom');
@@ -47,9 +49,11 @@ describe('StatusTracker', () => {
 
   it('exposes a copy of current status', () => {
     const tracker = new StatusTracker(dbPath);
-    tracker.setNodeCount(3);
+    tracker.setNodeLifecycleCounts(3, 1);
     const status = tracker.getStatus();
     assert.equal(status.nodeCount, 3);
+    assert.equal(status.activeNodeCount, 3);
+    assert.equal(status.expiredNodeCount, 1);
 
     status.nodeCount = 999;
     assert.equal(tracker.getStatus().nodeCount, 3);

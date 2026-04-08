@@ -399,7 +399,10 @@ export async function runReflectionPass(params: {
     params.store.applyPass(pass);
     params.injector.invalidate();
     params.status.recordReflectiveScribe();
-    params.status.setNodeCount(params.store.queryNodes().length);
+    params.status.setNodeLifecycleCounts(
+      params.store.queryNodes({ active: true }).length,
+      params.store.queryNodes({ active: false }).length,
+    );
   } catch (err) {
     params.status.recordReflectiveScribeFailure(stage, err);
     params.status.recordError('reflective-scribe', err);
@@ -412,7 +415,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
   mkdirSync(dirname(config.dbPath), { recursive: true });
   const store = createStore(config.dbPath);
   const status = new StatusTracker(config.dbPath);
-  status.setNodeCount(store.queryNodes().length);
+  status.setNodeLifecycleCounts(
+    store.queryNodes({ active: true }).length,
+    store.queryNodes({ active: false }).length,
+  );
   const baseInjector = createInjector(store, { tokenBudget: config.tokenBudget });
   const injector = {
     ...baseInjector,
@@ -482,7 +488,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
       injector.invalidate();
       passesSinceReflection++;
       status.recordTranscriptScribe(lastSourceProcessed);
-      status.setNodeCount(store.queryNodes().length);
+      status.setNodeLifecycleCounts(
+        store.queryNodes({ active: true }).length,
+        store.queryNodes({ active: false }).length,
+      );
       await checkAndRunReflection();
     } catch (err) {
       status.recordError('transcript-scribe', err);
@@ -525,7 +534,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
           const workspaceDir =
             api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config) ?? process.cwd();
           runBootstrap(store, scribe, config.bootstrap, workspaceDir).then(() => {
-            status.setNodeCount(store.queryNodes().length);
+            status.setNodeLifecycleCounts(
+              store.queryNodes({ active: true }).length,
+              store.queryNodes({ active: false }).length,
+            );
           }).catch((err) => {
             status.recordError('bootstrap', err);
             console.warn(

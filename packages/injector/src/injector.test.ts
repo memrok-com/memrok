@@ -309,6 +309,14 @@ describe('injector', () => {
       assert.ok(topicalIdx !== -1, 'Topical user node should be included');
       assert.ok(broadIdx !== -1, 'Broad user node should still be included');
       assert.ok(topicalIdx < broadIdx, 'Topical user node should rank ahead of broad biography/admin node');
+
+      const topicalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/memrok/injector-ranking');
+      assert.ok(topicalNode, 'Topical node should expose debug attribution');
+      assert.ok((topicalNode?.semanticScore ?? 0) > 0);
+      assert.ok((topicalNode?.queryCoverage ?? 0) > 0);
+      assert.equal(topicalNode?.domain, 'memrok');
+      assert.equal(topicalNode?.domainMatch, true);
+      assert.ok((topicalNode?.selectedBecause ?? []).length > 0);
     });
 
     it('softly downweights broad biography-admin nodes without excluding them in focused product contexts', () => {

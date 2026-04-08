@@ -6,28 +6,48 @@ const args = process.argv.slice(2);
 let dbPath = process.env.MEMROK_DB_PATH || '/home/michael/.memrok/memrok.db';
 let tokenBudget = 1000;
 let recentMessages = '';
+let json = false;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (arg === '--db' && args[i + 1]) dbPath = args[++i];
   else if (arg === '--budget' && args[i + 1]) tokenBudget = Number(args[++i]);
   else if (arg === '--recent' && args[i + 1]) recentMessages = args[++i];
+  else if (arg === '--json') json = true;
 }
 
 const store = createStore(dbPath);
 const injector = createInjector(store, { tokenBudget });
 const header = injector.assemble({ recentMessages });
 
+if (json) {
+  console.log(JSON.stringify(header, null, 2));
+  store.close();
+  process.exit(0);
+}
+
 console.log('## Memrok Header Inspect');
 console.log(`dbPath: ${dbPath}`);
 console.log(`tokens: ${header.tokens}`);
 console.log(`nodesUsed: ${header.nodesUsed}`);
 console.log(`layers: user=${header.layers.user}, agent=${header.layers.agent}, collaboration=${header.layers.collaboration}`);
+const highRisk = (header.debugNodes ?? []).filter((node) => node.outOfContextRisk >= 0.5);
+console.log(`highOutOfContextRisk: ${highRisk.length}`);
 console.log('');
 console.log('### Selected nodes');
 for (const node of header.debugNodes ?? []) {
-  console.log(`- [${node.layer}/${node.category}] score=${node.score.toFixed(3)} refs=${node.referenceCount} corr=${node.correctionCount} updated=${node.updatedAt}`);
+  console.log(`- [${node.layer}/${node.category}] score=${node.score.toFixed(3)} raw=${node.rawScore.toFixed(3)} risk=${node.outOfContextRisk.toFixed(2)} refs=${node.referenceCount} corr=${node.correctionCount} updated=${node.updatedAt}`);
   console.log(`  key: ${node.key}`);
+  console.log(`  family: ${node.family} domain=${node.domain ?? 'none'} domainMatch=${node.domainMatch === null ? 'n/a' : String(node.domainMatch)}`);
+  console.log(`  semantic=${node.semanticScore.toFixed(3)} queryCoverage=${node.queryCoverage.toFixed(3)} keyCoverage=${node.keyTokenCoverage}`);
+  console.log(`  because: ${(node.selectedBecause ?? []).join(', ') || 'baseline relevance'}`);
+  console.log(
+    `  adjustments: query+${node.scoreAdjustments.queryCoverageBoost.toFixed(3)} key+${node.scoreAdjustments.keyMatchBoost.toFixed(3)} ` +
+    `domain+${node.scoreAdjustments.domainBoost.toFixed(3)} broad-${node.scoreAdjustments.broadBioPenalty.toFixed(3)} ` +
+    `meta-${node.scoreAdjustments.genericMetaPenalty.toFixed(3)} cross-${node.scoreAdjustments.crossDomainPenalty.toFixed(3)} ` +
+    `dup-${node.scoreAdjustments.selectionSimilarityPenalty.toFixed(3)} family-${node.scoreAdjustments.selectionFamilyPenalty.toFixed(3)} ` +
+    `domainSel-${node.scoreAdjustments.selectionDomainPenalty.toFixed(3)}`
+  );
   console.log(`  value: ${node.value}`);
 }
 console.log('');

@@ -277,6 +277,34 @@ function computeGenericMetaScore(node: Node): number {
   return Math.min(1, matches / 4);
 }
 
+function computeOutOfContextRisk(params: {
+  queryKeywords: Set<string>;
+  semantic: number;
+  queryCoverage: number;
+  domainFocus: string | null;
+  nodeDomain: string | null;
+  genericMetaScore: number;
+}): number {
+  if (params.queryKeywords.size === 0) return 0;
+
+  let risk = 0;
+  if (params.semantic < 0.18 && params.queryCoverage < 0.12) {
+    risk += 0.55;
+  } else if (params.semantic < 0.28 && params.queryCoverage < 0.2) {
+    risk += 0.3;
+  }
+
+  if (params.domainFocus && params.nodeDomain && params.nodeDomain !== params.domainFocus && params.queryCoverage < 0.18) {
+    risk += 0.3;
+  }
+
+  if (params.genericMetaScore >= 0.5 && params.queryCoverage < 0.18) {
+    risk += 0.2;
+  }
+
+  return Math.min(1, risk);
+}
+
 function truncateValue(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   const truncated = value.slice(0, maxChars);
@@ -316,6 +344,31 @@ function scoreNode(
 }
 
 type LayerName = 'user' | 'agent' | 'collaboration';
+
+interface ScoredCandidate {
+  node: Node;
+  score: number;
+  rawScore: number;
+  semantic: number;
+  queryCoverage: number;
+  keyTokenCoverage: number;
+  family: string;
+  domain: string | null;
+  domainMatch: boolean | null;
+  outOfContextRisk: number;
+  selectedBecause: string[];
+  scoreAdjustments: {
+    queryCoverageBoost: number;
+    keyMatchBoost: number;
+    domainBoost: number;
+    broadBioPenalty: number;
+    genericMetaPenalty: number;
+    crossDomainPenalty: number;
+    selectionSimilarityPenalty: number;
+    selectionFamilyPenalty: number;
+    selectionDomainPenalty: number;
+  };
+}
 
 export function createInjector(
   store: Store,
@@ -375,7 +428,7 @@ export function createInjector(
     const domainFocus = detectDomainFocus(queryKeywords);
 
     // Group by layer and score
-    const layerNodes: Record<LayerName, { node: Node; score: number }[]> = {
+    const layerNodes: Record<LayerName, ScoredCandidate[]> = {
       user: [],
       agent: [],
       collaboration: [],
@@ -386,52 +439,105 @@ export function createInjector(
       if (!(layer in layerNodes)) continue;
       const semantic = computeSemanticScore(node.key, queryKeywords, kwCache);
       const queryCoverage = computeQueryCoverageScore(node.key, queryKeywords, kwCache);
-      let score = scoreNode(node, weights, maxAge, semantic);
+      const baseScore = scoreNode(node, weights, maxAge, semantic);
+      let score = baseScore;
       const nodeDomain = classifyNodeDomain(node);
       const genericMetaScore = computeGenericMetaScore(node);
+      const keyTokenCoverage = queryKeywords.size > 0
+        ? countKeywordOverlap(queryKeywords, tokenize(node.key))
+        : 0;
+      let queryCoverageBoost = 0;
+      let keyMatchBoost = 0;
+      let domainBoost = 0;
+      let broadBioPenalty = 0;
+      let genericMetaPenalty = 0;
+      let crossDomainPenalty = 0;
+      const selectedBecause: string[] = [];
 
       if (layer === 'user' && queryKeywords.size > 0) {
-        score += 0.2 * queryCoverage;
+        queryCoverageBoost += 0.2 * queryCoverage;
         if (queryCoverage >= 0.5) {
-          score += 0.08;
+          queryCoverageBoost += 0.08;
         }
+        score += queryCoverageBoost;
       }
 
       if (queryKeywords.size > 0) {
-        const keyTokenCoverage = countKeywordOverlap(queryKeywords, tokenize(node.key));
         if (keyTokenCoverage >= 2) {
-          score += 0.1;
+          keyMatchBoost += 0.1;
         } else if (keyTokenCoverage === 1 && queryCoverage >= 0.25) {
-          score += 0.04;
+          keyMatchBoost += 0.04;
         }
+        score += keyMatchBoost;
       }
 
       if (productDebugFocused) {
         const broadBioAdminScore = computeBroadBioAdminScore(node);
         if (broadBioAdminScore > 0) {
           const semanticMismatch = Math.max(0, 1 - semantic);
-          score -= broadBioAdminScore * semanticMismatch * 0.18;
+          broadBioPenalty = broadBioAdminScore * semanticMismatch * 0.18;
+          score -= broadBioPenalty;
         }
       }
 
       if (domainFocus) {
         if (nodeDomain === domainFocus) {
-          score += 0.16;
-          score += 0.08 * queryCoverage;
+          domainBoost += 0.16;
+          domainBoost += 0.08 * queryCoverage;
           if (genericMetaScore > 0 && queryCoverage >= 0.2) {
-            score += 0.04;
+            domainBoost += 0.04;
           }
+          score += domainBoost;
         } else if (nodeDomain && queryCoverage < 0.18) {
-          score -= 0.18;
-          if (semantic < 0.2) score -= 0.1;
+          crossDomainPenalty += 0.18;
+          if (semantic < 0.2) crossDomainPenalty += 0.1;
+          score -= crossDomainPenalty;
         } else if (!nodeDomain && genericMetaScore > 0 && queryCoverage < 0.2) {
-          score -= 0.1 * genericMetaScore;
+          genericMetaPenalty = 0.1 * genericMetaScore;
+          score -= genericMetaPenalty;
         } else if (!nodeDomain && queryCoverage < 0.08) {
-          score -= 0.04;
+          genericMetaPenalty = 0.04;
+          score -= genericMetaPenalty;
         }
       }
 
-      layerNodes[layer].push({ node, score });
+      if (semantic >= 0.35) selectedBecause.push('semantic match');
+      if (queryCoverageBoost > 0.12) selectedBecause.push('query coverage');
+      if (keyMatchBoost > 0) selectedBecause.push('key-family overlap');
+      if (domainBoost > 0) selectedBecause.push('domain-local recall');
+      if (baseScore >= 0.45 && selectedBecause.length === 0) selectedBecause.push('durable baseline relevance');
+
+      layerNodes[layer].push({
+        node,
+        score,
+        rawScore: score,
+        semantic,
+        queryCoverage,
+        keyTokenCoverage,
+        family: getNodeFamily(node),
+        domain: nodeDomain,
+        domainMatch: domainFocus ? nodeDomain === domainFocus : null,
+        outOfContextRisk: computeOutOfContextRisk({
+          queryKeywords,
+          semantic,
+          queryCoverage,
+          domainFocus,
+          nodeDomain,
+          genericMetaScore,
+        }),
+        selectedBecause,
+        scoreAdjustments: {
+          queryCoverageBoost,
+          keyMatchBoost,
+          domainBoost,
+          broadBioPenalty,
+          genericMetaPenalty,
+          crossDomainPenalty,
+          selectionSimilarityPenalty: 0,
+          selectionFamilyPenalty: 0,
+          selectionDomainPenalty: 0,
+        },
+      });
     }
 
     // Sort each layer by score descending
@@ -474,7 +580,7 @@ export function createInjector(
           const candidate = remaining[i];
           const categoryKey = `${candidate.node.layer}:${candidate.node.category}`;
           if ((categoryCounts.get(categoryKey) ?? 0) >= 2) continue;
-          const family = getNodeFamily(candidate.node);
+          const family = candidate.family;
           if (queryKeywords.size > 0 && (selectedFamilies.get(family) ?? 0) >= 2) continue;
           const similarities = selectedValues.map((value) => similarityScore(candidate.node.value, value));
           const maxSimilarity = similarities.length === 0 ? 0 : Math.max(...similarities);
@@ -483,15 +589,15 @@ export function createInjector(
               ? 0
               : similarities.reduce((sum, value) => sum + value, 0) / similarities.length;
           const familyPenalty = (selectedFamilies.get(family) ?? 0) * 0.2;
-          const domain = classifyNodeDomain(candidate.node);
+          const domain = candidate.domain;
           const domainPenalty =
             domain && domainFocus && domain !== domainFocus
               ? (selectedDomains.get(domain) ?? 0) * 0.08
               : 0;
+          const similarityPenalty = (maxSimilarity * 0.18) + (avgSimilarity * 0.08);
           const adjustedScore =
             candidate.score -
-            (maxSimilarity * 0.18) -
-            (avgSimilarity * 0.08) -
+            similarityPenalty -
             familyPenalty -
             domainPenalty;
           if (adjustedScore > bestAdjustedScore) {
@@ -500,7 +606,8 @@ export function createInjector(
           }
         }
         if (bestIndex === -1) break;
-        const { node, score } = remaining.splice(bestIndex, 1)[0];
+        const selected = remaining.splice(bestIndex, 1)[0];
+        const { node, rawScore } = selected;
         if (isNearDuplicate(node.value, selectedValues)) continue;
         const categoryKey = `${node.layer}:${node.category}`;
         const line = `- ${truncateValue(node.value, maxNodeChars)}\n`;
@@ -508,22 +615,51 @@ export function createInjector(
         if (sectionTokens + lineTokens > budget) break;
         lines.push(line);
         selectedValues.push(node.value);
-        const family = getNodeFamily(node);
+        const family = selected.family;
         selectedFamilies.set(family, (selectedFamilies.get(family) ?? 0) + 1);
-        const domain = classifyNodeDomain(node);
+        const domain = selected.domain;
         if (domain) {
           selectedDomains.set(domain, (selectedDomains.get(domain) ?? 0) + 1);
         }
         categoryCounts.set(categoryKey, (categoryCounts.get(categoryKey) ?? 0) + 1);
+        const similarities = selectedValues
+          .slice(0, -1)
+          .map((value) => similarityScore(node.value, value));
+        const maxSimilarity = similarities.length === 0 ? 0 : Math.max(...similarities);
+        const avgSimilarity =
+          similarities.length === 0
+            ? 0
+            : similarities.reduce((sum, value) => sum + value, 0) / similarities.length;
+        const selectionSimilarityPenalty = (maxSimilarity * 0.18) + (avgSimilarity * 0.08);
+        const selectionFamilyPenalty = Math.max(0, ((selectedFamilies.get(family) ?? 1) - 1) * 0.2);
+        const selectionDomainPenalty =
+          domain && domainFocus && domain !== domainFocus
+            ? Math.max(0, ((selectedDomains.get(domain) ?? 1) - 1) * 0.08)
+            : 0;
         debugNodes.push({
           key: node.key,
           layer,
           category: node.category,
           value: node.value,
           score: bestAdjustedScore,
+          rawScore,
           updatedAt: node.updated_at,
           referenceCount: node.reference_count,
           correctionCount: node.correction_count,
+          semanticScore: selected.semantic,
+          queryCoverage: selected.queryCoverage,
+          keyTokenCoverage: selected.keyTokenCoverage,
+          family,
+          domain,
+          domainMatch: selected.domainMatch,
+          outOfContextRisk: selected.outOfContextRisk,
+          selectedBecause: selected.selectedBecause,
+          scoreAdjustments: {
+            ...selected.scoreAdjustments,
+            selectionSimilarityPenalty,
+            selectionFamilyPenalty,
+            selectionDomainPenalty,
+          },
         });
         sectionTokens += lineTokens;
         layerCounts[layer]++;

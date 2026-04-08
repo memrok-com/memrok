@@ -10,6 +10,13 @@ import { ScribeInterface } from './scribe.js';
 import { createApiServer } from './api.js';
 import { StatusTracker } from './status.js';
 
+function updateNodeLifecycleStatus(status: StatusTracker, store: Store): void {
+  status.setNodeLifecycleCounts(
+    store.queryNodes({ active: true }).length,
+    store.queryNodes({ active: false }).length,
+  );
+}
+
 export function createDaemon(config: DaemonConfig): MemrokDaemon {
   let store: Store;
   let injector: Injector;
@@ -54,7 +61,7 @@ export function createDaemon(config: DaemonConfig): MemrokDaemon {
       lastPassTime = new Date().toISOString();
       injector.invalidate();
       status.recordTranscriptScribe(lastSourceProcessed);
-      status.setNodeCount(store.queryNodes().length);
+      updateNodeLifecycleStatus(status, store);
     } catch (err) {
       status.recordError('transcript-scribe', err);
       throw err;
@@ -68,7 +75,7 @@ export function createDaemon(config: DaemonConfig): MemrokDaemon {
 
     store = createStore(config.store.path);
     status = new StatusTracker(config.store.path);
-    status.setNodeCount(store.queryNodes().length);
+    updateNodeLifecycleStatus(status, store);
     const baseInjector = createInjector(store, config.injector);
     injector = {
       ...baseInjector,

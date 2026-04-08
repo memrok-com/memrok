@@ -260,8 +260,9 @@ describe('runReflectionPass', () => {
         statusCalls.lastErrorStage = stage;
         statusCalls.lastErrorMessage = error instanceof Error ? error.message : String(error);
       },
-      setNodeCount(nodeCount: number) {
-        statusCalls.nodeCount = nodeCount;
+      setNodeLifecycleCounts(activeNodeCount: number, expiredNodeCount: number) {
+        statusCalls.activeNodeCount = activeNodeCount;
+        statusCalls.expiredNodeCount = expiredNodeCount;
       },
     };
 

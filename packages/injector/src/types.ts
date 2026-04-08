@@ -31,9 +31,29 @@ export interface ContextHeaderDebugNode {
   category: string;
   value: string;
   score: number;
+  rawScore: number;
   updatedAt: string;
   referenceCount: number;
   correctionCount: number;
+  semanticScore: number;
+  queryCoverage: number;
+  keyTokenCoverage: number;
+  family: string;
+  domain: string | null;
+  domainMatch: boolean | null;
+  outOfContextRisk: number;
+  selectedBecause: string[];
+  scoreAdjustments: {
+    queryCoverageBoost: number;
+    keyMatchBoost: number;
+    domainBoost: number;
+    broadBioPenalty: number;
+    genericMetaPenalty: number;
+    crossDomainPenalty: number;
+    selectionSimilarityPenalty: number;
+    selectionFamilyPenalty: number;
+    selectionDomainPenalty: number;
+  };
 }
 
 export interface ContextHeader {

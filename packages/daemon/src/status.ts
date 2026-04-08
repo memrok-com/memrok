@@ -3,6 +3,8 @@ import { dirname, join } from 'node:path';
 
 export interface MemrokActivityStatus {
   nodeCount: number;
+  activeNodeCount: number;
+  expiredNodeCount: number;
   lastTranscriptScribeAt: string | null;
   lastReflectiveScribeAt: string | null;
   lastReflectiveScribeAttemptAt: string | null;
@@ -20,6 +22,8 @@ export interface MemrokActivityStatus {
 
 const DEFAULT_STATUS: MemrokActivityStatus = {
   nodeCount: 0,
+  activeNodeCount: 0,
+  expiredNodeCount: 0,
   lastTranscriptScribeAt: null,
   lastReflectiveScribeAt: null,
   lastReflectiveScribeAttemptAt: null,
@@ -59,7 +63,15 @@ export class StatusTracker {
   }
 
   setNodeCount(nodeCount: number): void {
-    this.write({ nodeCount });
+    this.write({ nodeCount, activeNodeCount: nodeCount });
+  }
+
+  setNodeLifecycleCounts(activeNodeCount: number, expiredNodeCount: number): void {
+    this.write({
+      nodeCount: activeNodeCount,
+      activeNodeCount,
+      expiredNodeCount,
+    });
   }
 
   recordTranscriptScribe(source?: string | null): void {
