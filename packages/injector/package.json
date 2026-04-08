@@ -1,6 +1,6 @@
 {
   "name": "@memrok/injector",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@memrok/store": "0.3.5"
+    "@memrok/store": "0.3.6"
   },
   "devDependencies": {
     "tsx": "^4.19.4",
