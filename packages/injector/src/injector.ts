@@ -48,6 +48,12 @@ const PRODUCT_DEBUG_KEYWORDS = new Set([
   'selection', 'topic', 'topics', 'context', 'qa', 'broken',
 ]);
 
+const GENERIC_META_KEYWORDS = new Set([
+  'memory', 'memories', 'context', 'selection', 'ranking', 'retrieval',
+  'recall', 'judgment', 'curation', 'graph', 'graphs', 'topic', 'topics',
+  'meta', 'system', 'baseline',
+]);
+
 const DOMAIN_KEYWORDS: Record<string, Set<string>> = {
   memrok: new Set(['memrok', 'injector', 'reflection', 'scribe', 'clawhub']),
   priomind: new Set(['priomind', 'tweet', 'tweets', 'linkedin', 'pricing', 'customer', 'landing']),
@@ -89,6 +95,29 @@ function similarityScore(a: string, b: string): number {
 
 function isNearDuplicate(candidate: string, selected: string[]): boolean {
   return selected.some((existing) => similarityScore(candidate, existing) >= 0.75);
+}
+
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[/.]+/g, '/');
+}
+
+function getKeySegments(key: string): string[] {
+  return normalizeKey(key).split('/').filter(Boolean);
+}
+
+function getNodeFamily(node: Node): string {
+  const segments = getKeySegments(node.key);
+  if (segments.length <= 1) return segments[0] ?? node.key.toLowerCase();
+  return segments.slice(0, Math.min(3, segments.length)).join('/');
+}
+
+function getNodeDomainSignature(node: Node): string | null {
+  const segments = getKeySegments(node.key);
+  if (segments.length < 2) return null;
+  if (segments[0] === 'user' || segments[0] === 'agent' || segments[0] === 'collaboration' || segments[0] === 'collab') {
+    return segments[1];
+  }
+  return segments[0];
 }
 
 interface KeywordCache {
@@ -194,16 +223,37 @@ function detectDomainFocus(queryKeywords: Set<string>): string | null {
 }
 
 function classifyNodeDomain(node: Node): string | null {
-  const key = node.key.toLowerCase();
-  if (key.startsWith('user.memrok.') || key.startsWith('agent.memrok.') || key.startsWith('collaboration.memrok.')) return 'memrok';
-  if (key.startsWith('user.priomind.') || key.startsWith('user.linkedin.') || key.startsWith('user.social.') || key.startsWith('user.content.')) return 'priomind';
-  if (key.startsWith('user.zhaw.') || key.startsWith('user.work.') || key.startsWith('user.arch.')) return 'zhaw';
-  if (key.startsWith('user.fcl.')) return 'fcl';
-  if (key.startsWith('user.orbitals.') || key.startsWith('user.creative.')) return 'orbitals';
-  if (key.startsWith('user.infra.') || key.startsWith('user.memory.')) return 'infra';
-  if (key.startsWith('user.health.')) return 'health';
-  if (key.startsWith('user.learning.')) return 'learning';
-  return null;
+  const signature = getNodeDomainSignature(node);
+  const aliasMap: Record<string, string> = {
+    memrok: 'memrok',
+    priomind: 'priomind',
+    linkedin: 'priomind',
+    social: 'priomind',
+    content: 'priomind',
+    zhaw: 'zhaw',
+    work: 'zhaw',
+    arch: 'zhaw',
+    fcl: 'fcl',
+    orbitals: 'orbitals',
+    creative: 'orbitals',
+    infra: 'infra',
+    memory: 'infra',
+    health: 'health',
+    learning: 'learning',
+  };
+  if (signature && aliasMap[signature]) return aliasMap[signature];
+
+  const tokens = tokenize(`${node.key} ${node.value}`);
+  let bestDomain: string | null = null;
+  let bestScore = 0;
+  for (const [domain, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
+    const score = countKeywordOverlap(tokens, keywords);
+    if (score > bestScore) {
+      bestScore = score;
+      bestDomain = domain;
+    }
+  }
+  return bestScore >= 2 ? bestDomain : null;
 }
 
 function computeBroadBioAdminScore(node: Node): number {
@@ -219,6 +269,12 @@ function computeBroadBioAdminScore(node: Node): number {
   }
 
   return score;
+}
+
+function computeGenericMetaScore(node: Node): number {
+  const tokens = tokenize(`${node.key} ${node.category} ${node.value}`);
+  const matches = countKeywordOverlap(tokens, GENERIC_META_KEYWORDS);
+  return Math.min(1, matches / 4);
 }
 
 function truncateValue(value: string, maxChars: number): string {
@@ -331,11 +387,22 @@ export function createInjector(
       const semantic = computeSemanticScore(node.key, queryKeywords, kwCache);
       const queryCoverage = computeQueryCoverageScore(node.key, queryKeywords, kwCache);
       let score = scoreNode(node, weights, maxAge, semantic);
+      const nodeDomain = classifyNodeDomain(node);
+      const genericMetaScore = computeGenericMetaScore(node);
 
       if (layer === 'user' && queryKeywords.size > 0) {
         score += 0.2 * queryCoverage;
         if (queryCoverage >= 0.5) {
           score += 0.08;
+        }
+      }
+
+      if (queryKeywords.size > 0) {
+        const keyTokenCoverage = countKeywordOverlap(queryKeywords, tokenize(node.key));
+        if (keyTokenCoverage >= 2) {
+          score += 0.1;
+        } else if (keyTokenCoverage === 1 && queryCoverage >= 0.25) {
+          score += 0.04;
         }
       }
 
@@ -347,14 +414,18 @@ export function createInjector(
         }
       }
 
-      if (layer === 'user' && domainFocus) {
-        const nodeDomain = classifyNodeDomain(node);
+      if (domainFocus) {
         if (nodeDomain === domainFocus) {
-          score += 0.14;
+          score += 0.16;
           score += 0.08 * queryCoverage;
+          if (genericMetaScore > 0 && queryCoverage >= 0.2) {
+            score += 0.04;
+          }
         } else if (nodeDomain && queryCoverage < 0.18) {
-          score -= 0.14;
-          if (semantic < 0.2) score -= 0.08;
+          score -= 0.18;
+          if (semantic < 0.2) score -= 0.1;
+        } else if (!nodeDomain && genericMetaScore > 0 && queryCoverage < 0.2) {
+          score -= 0.1 * genericMetaScore;
         } else if (!nodeDomain && queryCoverage < 0.08) {
           score -= 0.04;
         }
@@ -376,6 +447,8 @@ export function createInjector(
     const sections: string[] = [];
     const debugNodes: ContextHeaderDebugNode[] = [];
     const selectedValues: string[] = [];
+    const selectedFamilies = new Map<string, number>();
+    const selectedDomains = new Map<string, number>();
     const categoryCounts = new Map<string, number>();
     const layerCounts: Record<LayerName, number> = {
       user: 0,
@@ -401,13 +474,26 @@ export function createInjector(
           const candidate = remaining[i];
           const categoryKey = `${candidate.node.layer}:${candidate.node.category}`;
           if ((categoryCounts.get(categoryKey) ?? 0) >= 2) continue;
+          const family = getNodeFamily(candidate.node);
+          if (queryKeywords.size > 0 && (selectedFamilies.get(family) ?? 0) >= 2) continue;
           const similarities = selectedValues.map((value) => similarityScore(candidate.node.value, value));
           const maxSimilarity = similarities.length === 0 ? 0 : Math.max(...similarities);
           const avgSimilarity =
             similarities.length === 0
               ? 0
               : similarities.reduce((sum, value) => sum + value, 0) / similarities.length;
-          const adjustedScore = candidate.score - (maxSimilarity * 0.18) - (avgSimilarity * 0.08);
+          const familyPenalty = (selectedFamilies.get(family) ?? 0) * 0.2;
+          const domain = classifyNodeDomain(candidate.node);
+          const domainPenalty =
+            domain && domainFocus && domain !== domainFocus
+              ? (selectedDomains.get(domain) ?? 0) * 0.08
+              : 0;
+          const adjustedScore =
+            candidate.score -
+            (maxSimilarity * 0.18) -
+            (avgSimilarity * 0.08) -
+            familyPenalty -
+            domainPenalty;
           if (adjustedScore > bestAdjustedScore) {
             bestAdjustedScore = adjustedScore;
             bestIndex = i;
@@ -422,6 +508,12 @@ export function createInjector(
         if (sectionTokens + lineTokens > budget) break;
         lines.push(line);
         selectedValues.push(node.value);
+        const family = getNodeFamily(node);
+        selectedFamilies.set(family, (selectedFamilies.get(family) ?? 0) + 1);
+        const domain = classifyNodeDomain(node);
+        if (domain) {
+          selectedDomains.set(domain, (selectedDomains.get(domain) ?? 0) + 1);
+        }
         categoryCounts.set(categoryKey, (categoryCounts.get(categoryKey) ?? 0) + 1);
         debugNodes.push({
           key: node.key,

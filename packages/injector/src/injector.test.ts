@@ -441,6 +441,107 @@ describe('injector', () => {
       assert.ok(priomindNode, 'Cross-domain node may still survive under soft suppression');
       assert.ok((healthNode?.score ?? 0) > (priomindNode?.score ?? 0), 'Health node should outrank weakly related Priomind node');
     });
+
+    it('applies domain-local recall across agent and collaboration layers, not just user nodes', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-cross-layer-domain',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'agent',
+              category: 'skill',
+              key: 'agent/priomind/landing/messaging',
+              value: 'Can sharpen PrioMind landing page messaging around trust, pricing, and team decisions.',
+            },
+            {
+              operation: 'add',
+              layer: 'collaboration',
+              category: 'dynamic',
+              key: 'collaboration/priomind/review-loop',
+              value: 'PrioMind work benefits from comparing positioning options and cutting weak slogans fast.',
+            },
+            {
+              operation: 'add',
+              layer: 'agent',
+              category: 'belief',
+              key: 'agent/memrok/judgment',
+              value: 'Memrok should provide a sharper curation and judgment layer than baseline memory systems.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, {
+        tokenBudget: 260,
+        layerWeights: { user: 0.2, agent: 0.45, collaboration: 0.35 },
+      });
+      const header = injector.assemble({
+        recentMessages: 'PrioMind landing page messaging, pricing, and trust positioning for team decision workflows.',
+      });
+
+      const priomindAgentNode = (header.debugNodes ?? []).find((node) => node.key === 'agent/priomind/landing/messaging');
+      const priomindCollabNode = (header.debugNodes ?? []).find((node) => node.key === 'collaboration/priomind/review-loop');
+      const memrokAgentNode = (header.debugNodes ?? []).find((node) => node.key === 'agent/memrok/judgment');
+
+      assert.ok(priomindAgentNode, 'Priomind agent node should be selected');
+      assert.ok(priomindCollabNode, 'Priomind collaboration node should be selected');
+      assert.ok(memrokAgentNode, 'Cross-domain agent node may still survive under soft suppression');
+      assert.ok((priomindAgentNode?.score ?? 0) > (memrokAgentNode?.score ?? 0), 'Priomind agent node should outrank cross-domain agent node');
+      assert.ok((priomindCollabNode?.score ?? 0) > (memrokAgentNode?.score ?? 0), 'Priomind collaboration node should outrank cross-domain agent node');
+    });
+
+    it('prefers topic-relevant family diversity over selecting one graph family repeatedly', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-family-diversity',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'decision',
+              key: 'user/priomind/landing/headline',
+              value: 'PrioMind landing headline should emphasize structured decisions for teams.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'belief',
+              key: 'user/priomind/landing/proof',
+              value: 'PrioMind landing proof should reinforce structured decisions with team trust signals.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'process',
+              key: 'user/priomind/landing/cta',
+              value: 'PrioMind landing CTA should keep the team-decision framing concrete.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'decision',
+              key: 'user/priomind/pricing/value',
+              value: 'PrioMind pricing should feel safe for small teams trying a decision workflow.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, {
+        tokenBudget: 220,
+        layerWeights: { user: 0.8, agent: 0.1, collaboration: 0.1 },
+      });
+      const header = injector.assemble({
+        recentMessages: 'PrioMind landing page pricing and trust positioning for structured team decisions.',
+      });
+
+      const selectedKeys = (header.debugNodes ?? []).map((node) => node.key);
+      const landingKeys = selectedKeys.filter((key) => key.startsWith('user/priomind/landing/'));
+
+      assert.ok(selectedKeys.includes('user/priomind/pricing/value'), 'Distinct pricing family should survive judged selection');
+      assert.ok(landingKeys.length <= 2, 'Selection should avoid overpacking one landing family cluster');
+    });
   });
 
   describe('token budget enforcement', () => {
