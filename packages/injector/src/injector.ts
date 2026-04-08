@@ -48,6 +48,17 @@ const PRODUCT_DEBUG_KEYWORDS = new Set([
   'selection', 'topic', 'topics', 'context', 'qa', 'broken',
 ]);
 
+const DOMAIN_KEYWORDS: Record<string, Set<string>> = {
+  memrok: new Set(['memrok', 'injector', 'reflection', 'scribe', 'clawhub']),
+  priomind: new Set(['priomind', 'tweet', 'tweets', 'linkedin', 'pricing', 'customer', 'landing']),
+  zhaw: new Set(['zhaw', 'art', 'architecture', 'confluence', 'jira', 'evento']),
+  fcl: new Set(['fcl', 'spielleiter', 'ifv', 'refsix', 'match', 'matches']),
+  orbitals: new Set(['orbitals', 'episode', 'script', 'scene', 'character', 'pilot']),
+  infra: new Set(['infra', 'infrastructure', 'gateway', 'cron', 'telegram', 'provider', 'openclaw']),
+  health: new Set(['health', 'wellbeing', 'sleep', 'sick', 'energy']),
+  learning: new Set(['learning', 'learn', 'study', 'reading', 'course']),
+};
+
 const BROAD_BIO_ADMIN_KEYWORDS = new Set([
   'admin', 'administrative', 'biography', 'bio', 'background', 'profile',
   'profiles', 'identity', 'personal', 'personally', 'about', 'role', 'roles',
@@ -169,6 +180,32 @@ function isProductDebugFocused(queryKeywords: Set<string>): boolean {
   return countKeywordOverlap(queryKeywords, PRODUCT_DEBUG_KEYWORDS) >= 2;
 }
 
+function detectDomainFocus(queryKeywords: Set<string>): string | null {
+  let bestDomain: string | null = null;
+  let bestScore = 0;
+  for (const [domain, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
+    const score = countKeywordOverlap(queryKeywords, keywords);
+    if (score > bestScore) {
+      bestScore = score;
+      bestDomain = domain;
+    }
+  }
+  return bestScore >= 2 ? bestDomain : null;
+}
+
+function classifyNodeDomain(node: Node): string | null {
+  const key = node.key.toLowerCase();
+  if (key.startsWith('user.memrok.') || key.startsWith('agent.memrok.') || key.startsWith('collaboration.memrok.')) return 'memrok';
+  if (key.startsWith('user.priomind.') || key.startsWith('user.linkedin.') || key.startsWith('user.social.') || key.startsWith('user.content.')) return 'priomind';
+  if (key.startsWith('user.zhaw.') || key.startsWith('user.work.') || key.startsWith('user.arch.')) return 'zhaw';
+  if (key.startsWith('user.fcl.')) return 'fcl';
+  if (key.startsWith('user.orbitals.') || key.startsWith('user.creative.')) return 'orbitals';
+  if (key.startsWith('user.infra.') || key.startsWith('user.memory.')) return 'infra';
+  if (key.startsWith('user.health.')) return 'health';
+  if (key.startsWith('user.learning.')) return 'learning';
+  return null;
+}
+
 function computeBroadBioAdminScore(node: Node): number {
   const tokens = tokenize(`${node.key} ${node.category} ${node.value}`);
   const matches = countKeywordOverlap(tokens, BROAD_BIO_ADMIN_KEYWORDS);
@@ -279,6 +316,7 @@ export function createInjector(
     // Tokenize query; empty query falls back to 0.5 per-node inside computeSemanticScore
     const queryKeywords = recentMessages ? tokenize(recentMessages) : new Set<string>();
     const productDebugFocused = isProductDebugFocused(queryKeywords);
+    const domainFocus = detectDomainFocus(queryKeywords);
 
     // Group by layer and score
     const layerNodes: Record<LayerName, { node: Node; score: number }[]> = {
@@ -306,6 +344,19 @@ export function createInjector(
         if (broadBioAdminScore > 0) {
           const semanticMismatch = Math.max(0, 1 - semantic);
           score -= broadBioAdminScore * semanticMismatch * 0.18;
+        }
+      }
+
+      if (layer === 'user' && domainFocus) {
+        const nodeDomain = classifyNodeDomain(node);
+        if (nodeDomain === domainFocus) {
+          score += 0.14;
+          score += 0.08 * queryCoverage;
+        } else if (nodeDomain && queryCoverage < 0.18) {
+          score -= 0.14;
+          if (semantic < 0.2) score -= 0.08;
+        } else if (!nodeDomain && queryCoverage < 0.08) {
+          score -= 0.04;
         }
       }
 

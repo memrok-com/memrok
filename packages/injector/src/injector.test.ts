@@ -359,6 +359,88 @@ describe('injector', () => {
         'Topical user node should outscore the broad biography/admin node'
       );
     });
+
+    it('suppresses memrok and infra user nodes in a Priomind-focused context', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-domain-focus',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'decision',
+              key: 'user.priomind.positioning',
+              value: 'PrioMind should lead with structured decisions and team trust on the landing page.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'belief',
+              key: 'user.memrok.curation',
+              value: 'Memrok should provide a sharper curation and judgment layer than baseline memory.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'decision',
+              key: 'user.infra.tandem_setup',
+              value: 'Created Telegram forum group Tandem to structure conversations by topic.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store);
+      const header = injector.assemble({
+        recentMessages: 'PrioMind landing page messaging, pricing, and tweet pipeline positioning for product growth.',
+      });
+
+      const priomindNode = (header.debugNodes ?? []).find((node) => node.key === 'user.priomind.positioning');
+      const memrokNode = (header.debugNodes ?? []).find((node) => node.key === 'user.memrok.curation');
+      const infraNode = (header.debugNodes ?? []).find((node) => node.key === 'user.infra.tandem_setup');
+
+      assert.ok(priomindNode, 'Priomind node should be selected');
+      assert.ok(memrokNode, 'Memrok node may still survive under soft suppression');
+      assert.ok(infraNode, 'Infra node may still survive under soft suppression');
+      assert.ok((priomindNode?.score ?? 0) > (memrokNode?.score ?? 0), 'Priomind node should outrank Memrok node');
+      assert.ok((priomindNode?.score ?? 0) > (infraNode?.score ?? 0), 'Priomind node should outrank infra node');
+    });
+
+    it('boosts local-domain user nodes in a health-focused context', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-health-domain',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user.health.privacy',
+              value: 'Health and wellbeing conversations should feel private, practical, and non-judgy.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'decision',
+              key: 'user.priomind.gtm_shift',
+              value: 'Shifted PrioMind GTM from cautious outreach to going public.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store);
+      const header = injector.assemble({
+        recentMessages: 'Health and wellbeing topic: private, practical discussion about comfort and experiments.',
+      });
+
+      const healthNode = (header.debugNodes ?? []).find((node) => node.key === 'user.health.privacy');
+      const priomindNode = (header.debugNodes ?? []).find((node) => node.key === 'user.priomind.gtm_shift');
+
+      assert.ok(healthNode, 'Health node should be selected');
+      assert.ok(priomindNode, 'Cross-domain node may still survive under soft suppression');
+      assert.ok((healthNode?.score ?? 0) > (priomindNode?.score ?? 0), 'Health node should outrank weakly related Priomind node');
+    });
   });
 
   describe('token budget enforcement', () => {
