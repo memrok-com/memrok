@@ -12,6 +12,10 @@ function makeTmpStore() {
   return { store, dir };
 }
 
+async function waitForNextTick(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 5));
+}
+
 describe('serializeGraphForReflection', () => {
   it('returns empty-graph message when store has no nodes', () => {
     const { store, dir } = makeTmpStore();
@@ -198,8 +202,139 @@ describe('serializeGraphForReflection', () => {
       const out = serializeGraphForReflection(store);
       assert.match(out, /## RECENT PASSES/);
       assert.match(out, /mutations=1/);
-      assert.match(out, /## CANDIDATE STALE OR SUPERSEDED NODES/);
+      assert.match(out, /## CURATION PRIORITY: STALE OR SUPERSEDED NODES/);
       assert.match(out, /user\.memrok\.status/);
+      assert.match(out, /expiry_pressure=/);
+      assert.match(out, /snapshot\/status wording/);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('surfaces fresher same-family state as supersession pressure', async () => {
+    const { store, dir } = makeTmpStore();
+    try {
+      store.applyPass({
+        pass_id: 'p1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'agent',
+            category: 'dynamic',
+            key: 'agent.memrok.status',
+            value: 'Memrok status: healthy as of 2026-03-01.',
+          },
+        ],
+      });
+      await waitForNextTick();
+      store.applyPass({
+        pass_id: 'p2',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'agent',
+            category: 'dynamic',
+            key: 'agent.memrok.state.current',
+            value: 'Current state: degraded while rebuilding the injector.',
+          },
+        ],
+      });
+
+      const out = serializeGraphForReflection(store);
+      assert.match(out, /agent\.memrok\.status/);
+      assert.match(out, /fresher same-family state exists \(agent\.memrok\.state\.current\)/);
+      assert.match(out, /newer_state: agent\.memrok\.state\.current/);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('marks same-key snapshot churn as strong supersession pressure', () => {
+    const { store, dir } = makeTmpStore();
+    try {
+      store.applyPass({
+        pass_id: 'p1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'user',
+            category: 'fact',
+            key: 'user.memrok.node_count',
+            value: 'Graph node count is 33 as of 2026-03-01.',
+          },
+        ],
+      });
+      store.applyPass({
+        pass_id: 'p2',
+        mutations: [
+          {
+            operation: 'update',
+            layer: 'user',
+            category: 'fact',
+            key: 'user.memrok.node_count',
+            value: 'Graph node count is 41 as of 2026-03-18.',
+          },
+        ],
+      });
+
+      const out = serializeGraphForReflection(store);
+      assert.match(out, /user\.memrok\.node_count/);
+      assert.match(out, /same key has been rewritten with different state/);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not treat durable policy decisions as stale operational state', () => {
+    const { store, dir } = makeTmpStore();
+    try {
+      store.applyPass({
+        pass_id: 'p1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'collaboration',
+            category: 'decision',
+            key: 'collab.policy.review_flow',
+            value: 'Default to inspect, patch, rebuild, compare before proposing broader refactors.',
+          },
+        ],
+      });
+
+      const out = serializeGraphForReflection(store);
+      const policyBlock = out.match(/\[collab\.policy\.review_flow\][\s\S]*?(?=\n\[|\n## |\s*$)/)?.[0] ?? '';
+      assert.ok(policyBlock.includes('stats:'), 'durable decision is serialized');
+      assert.doesNotMatch(policyBlock, /expiry_pressure=/);
+      assert.doesNotMatch(out, /## CURATION PRIORITY: STALE OR SUPERSEDED NODES[\s\S]*collab\.policy\.review_flow/);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('still treats transient operational decisions as stale candidates', () => {
+    const { store, dir } = makeTmpStore();
+    try {
+      store.applyPass({
+        pass_id: 'p1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'agent',
+            category: 'decision',
+            key: 'agent.ops.rollout_mode',
+            value: 'Current decision: keep the service in degraded mode during this release.',
+          },
+        ],
+      });
+
+      const out = serializeGraphForReflection(store);
+      assert.match(out, /agent\.ops\.rollout_mode/);
+      assert.match(out, /operational-state wording/);
+      assert.match(out, /expiry_pressure=/);
     } finally {
       store.close();
       rmSync(dir, { recursive: true, force: true });

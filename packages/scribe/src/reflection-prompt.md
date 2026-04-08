@@ -8,7 +8,7 @@ The transcript scribe already extracted facts, preferences, and patterns from co
 
 ## Input format
 
-You receive a GRAPH_STATE block containing the agent's current knowledge nodes, organized by layer (user/agent/collaboration). Each node has a key, value, timestamps, and reference counts.
+You receive a GRAPH_STATE block containing the agent's current knowledge nodes, organized by layer (user/agent/collaboration). Each node has a key, value, timestamps, and reference counts. Some nodes also include curation hints such as `expiry_pressure`, `reasons`, and `newer_state`; treat those as deterministic support signals, not as automatic instructions.
 
 ## Output format
 
@@ -37,9 +37,10 @@ Return a single JSON object. No prose, no markdown fences, no commentary. Start 
 2. **Contradictions**: nodes that tension against each other. Don't just flag them — **resolve them** when the evidence clearly favors one side. Expire the weaker node with an explanation. If the evidence is genuinely ambiguous, update both nodes to acknowledge the tension explicitly.
 3. **Vague-to-specific conversion**: nodes with hedging language ("tends to", "sometimes", "often") that accumulated evidence can now sharpen. If three separate observations support the same pattern, upgrade the node from vague to specific. "Sometimes prefers direct feedback" → "Consistently rejects softened feedback; every documented correction was blunt and immediate." Only sharpen when evidence warrants it.
 4. **Staleness**: nodes that were situational, not durable. Expire them with a clear reason. Be aggressive here — a graph full of stale nodes degrades injection quality. Treat status snapshots, counts, temporary operational state, and anything containing "as of" dates as high-suspicion candidates for expiry or replacement when newer evidence exists.
-5. **Growth edges**: areas where the agent's understanding is thin or untested. "I have strong beliefs about X but haven't tested them against Y."
-6. **Relationship dynamics**: patterns in the collaboration layer that reveal how the working relationship is evolving.
-7. **Blind spots**: what's conspicuously absent from the graph? What should be known but isn't tracked?
+5. **Supersession**: when curation hints show fresher same-family state, use that as strong pressure toward expiry or replacement. Same-key snapshot churn is especially likely to be superseded. Cross-key semantic overlap still requires judgment: only expire when the newer node actually makes the older one obsolete.
+6. **Growth edges**: areas where the agent's understanding is thin or untested. "I have strong beliefs about X but haven't tested them against Y."
+7. **Relationship dynamics**: patterns in the collaboration layer that reveal how the working relationship is evolving.
+8. **Blind spots**: what's conspicuously absent from the graph? What should be known but isn't tracked?
 
 ## Quality gate
 
@@ -60,7 +61,7 @@ Do NOT emit:
 
 - **add**: genuinely new synthesis not derivable from any single existing node
 - **update**: deepen or reframe an existing node based on accumulated evidence. Use the exact key of the node being updated. This includes sharpening vague nodes into specific claims when evidence supports it and replacing outdated status snapshots with current truth.
-- **expire**: mark a node as no longer current. Value should explain why. This includes the losing side of resolved contradictions. Be proactive — expiring stale or contradicted nodes is as valuable as adding new ones, especially for obsolete operational facts.
+- **expire**: mark a node as no longer current. Value should explain why. This includes the losing side of resolved contradictions. Be proactive — expiring stale or contradicted nodes is as valuable as adding new ones, especially for obsolete operational facts. High `expiry_pressure` is a prompt to scrutinize hard, not a substitute for judgment.
 
 ## Style
 
