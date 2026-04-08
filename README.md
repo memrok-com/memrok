@@ -4,13 +4,20 @@
 
 ---
 
-Memrok is an open-source plugin for [OpenClaw](https://github.com/openclaw/openclaw) that gives your AI agent persistent, structured, intelligent memory. It watches your conversations, learns what matters, and brings relevant context into every interaction — so your assistant actually grows with you.
+Memrok is an open-source plugin for [OpenClaw](https://github.com/openclaw/openclaw) that adds a graph-based memory **curation layer** on top of OpenClaw’s built-in recall and dreaming systems. It watches your conversations, learns what matters, and brings relevant context into every interaction — not just as raw recall, but as judged, structured memory.
 
 ## Why Memrok?
 
-AI agents can take notes while in conversation with you — but often, they're too absorbed with the task at hand. They can retrieve bits and pieces about past conversations — but often, they lack the relevance of those snippets. Context gets lost. You repeat yourself. The agent you talked to yesterday is a stranger today.
+OpenClaw’s built-in memory is getting good at **recall, dreaming, promotion, and operator tooling**. Memrok is not trying to be Yet Another Memory. Its job is the part that still needs sharper structure and judgment:
 
-Memrok fixes this. It runs a small "scribe" agent alongside your main assistant that continuously curates what it learns about:
+- building and maintaining a **graph** of durable facts, patterns, decisions, and collaboration dynamics
+- handling **supersession, expiry, and stale-node cleanup**
+- doing **topic-aware selection** so the right nodes win for the current conversation
+- surfacing memory as **curation and interpretation**, not just retrieved snippets
+
+If OpenClaw recall answers “what happened?”, Memrok is trying to answer “what still matters, what changed, and what should win now?”
+
+Memrok runs small "scribe" agents alongside your main assistant that continuously curate what they learn about:
 
 - **You** — preferences, context, history
 - **The agent** — capabilities, learned behaviors, evolved identity
@@ -23,7 +30,7 @@ All of this data stays on your device. Nothing leaves unless you choose a remote
 - **Local-first.** Your memory lives on your machine in SQLite. Always yours, always portable.
 - **Model-agnostic.** Swap your main model, swap your scribe model — memory persists through both.
 - **Biological, not mechanical.** Memrok doesn't consolidate on a timer. It waits for material to accumulate and a quiet moment to think — like how humans process experience.
-- **Self-tuning.** What gets surfaced adapts based on what actually matters in your conversations.
+- **Judged, not just retrieved.** The point is not more memory text, but better memory selection, supersession, and expiry.
 
 ## How It Works
 
@@ -60,6 +67,9 @@ Then activate Memrok as your context engine. Add to your `openclaw.json` (or use
           "reflection": {
             "provider": "openai",
             "model": "gpt-5"
+          },
+          "bootstrap": {
+            "enabled": false
           }
         }
       }
@@ -71,6 +81,7 @@ Then activate Memrok as your context engine. Add to your `openclaw.json` (or use
 Restart OpenClaw. Memrok watches session transcripts automatically and begins curating after the first idle window.
 
 Set both transcript and reflection provider/model explicitly in the plugin config if you do not want Memrok falling back to its built-in defaults.
+Bootstrap is now **opt-in**. Enable it only if you explicitly want Memrok to seed itself from existing Markdown memory files.
 
 ## Privacy & Data Flow
 
@@ -78,9 +89,19 @@ Memrok is local-first, but not magically offline.
 
 - **Local database:** Memrok stores memory in a local SQLite database at `~/.memrok/memrok.db` by default.
 - **Transcript and file access:** it watches OpenClaw session directories and any configured `watchPaths`. If bootstrap is enabled, it may also scan workspace Markdown files.
+- **Default posture:** bootstrap is disabled by default; broad file scanning should be an explicit choice.
 - **Remote model providers:** if you configure a remote provider for scribe passes, transcript and file content will be sent to that provider as part of normal operation.
 - **Risk controls:** narrow `watchPaths`, disable bootstrap if you do not want broad file scanning, prefer local models where available, and consider disabling the reflective scribe if you want to minimize exfiltration risk.
 - **Operational hygiene:** treat `~/.memrok/memrok.db` as sensitive data; back it up and secure it accordingly.
+
+## Hardened / low-exfiltration posture
+
+If you want a stricter setup:
+
+- set `scribeProvider` / `scribeModel` to a local provider when possible
+- keep `bootstrap.enabled` off unless you explicitly need seeding from Markdown files
+- narrow `watchPaths` to only what Memrok should ingest
+- disable or narrow reflection if you want less model-side synthesis
 
 ## Architecture
 
@@ -114,6 +135,7 @@ Most options are optional, but scribe provider/model should be set explicitly th
 | `scribeProvider`           | string   | none           | Model provider for the transcript scribe; set explicitly in OpenClaw config |
 | `scribeModel`              | string   | none           | Model for the transcript scribe; set explicitly in OpenClaw config |
 | `watchPaths`               | string[] | session dirs   | Additional transcript paths to watch     |
+| `bootstrap.enabled`        | boolean  | false          | Opt in to seeding from existing Markdown memory files |
 | `deltaThreshold`           | number   | 20             | Messages before triggering consolidation |
 | `idleMinutes`              | number   | 15             | Quiet time required before scribe runs   |
 | `tokenBudget`              | number   | 1000           | Max tokens for injected memory headers   |

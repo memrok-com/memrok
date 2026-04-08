@@ -2,7 +2,7 @@
   "name": "memrok",
   "version": "0.3.6",
   "private": true,
-  "description": "Persistent, structured, intelligent memory layer for OpenClaw AI agents",
+  "description": "Memory with judgment. Graph-based curation layer for OpenClaw agents, complementing built-in recall and dreaming.",
   "workspaces": [
     "packages/*"
   ],

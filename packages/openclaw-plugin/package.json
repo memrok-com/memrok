@@ -2,7 +2,7 @@
   "name": "memrok",
   "version": "0.3.6",
   "type": "module",
-  "description": "Memory with judgment. Persistent, structured, intelligent memory layer for OpenClaw AI agents.",
+  "description": "Memory with judgment. A graph-based curation layer for OpenClaw, complementing built-in recall and dreaming with explicit supersession, expiry, and topic-aware selection.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

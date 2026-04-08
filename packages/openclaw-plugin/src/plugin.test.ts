@@ -47,6 +47,7 @@ describe('openclaw plugin orchestration', () => {
     assert.equal(resolved.deltaThreshold, 20);
     assert.equal(resolved.idleMinutes, 15);
     assert.equal(resolved.tokenBudget, 1000);
+    assert.equal(resolved.bootstrap.enabled, false);
     assert.ok(resolved.dbPath.endsWith('/.memrok/memrok.db'));
   });
 
