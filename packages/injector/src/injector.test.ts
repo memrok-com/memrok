@@ -270,6 +270,95 @@ describe('injector', () => {
       const lowIdx = header.text.indexOf('Low refs item');
       assert.ok(highIdx < lowIdx, 'Higher frequency should appear first');
     });
+
+    it('prefers topic-relevant user nodes over broad biography-admin user nodes in product debugging contexts', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-topic-affinity',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/profile/admin-style',
+              value: 'Prefers concise admin updates and has a broad biography across many projects.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/memrok/injector-ranking',
+              value: 'Works on Memrok injector ranking and debugging topic selection regressions.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store);
+      const header = injector.assemble({
+        recentMessages: 'Memrok injector bug: debug topic 540 ranking and fix selection regressions in product context.',
+      });
+
+      const topicalIdx = header.text.indexOf(
+        'Works on Memrok injector ranking and debugging topic selection regressions.'
+      );
+      const broadIdx = header.text.indexOf(
+        'Prefers concise admin updates and has a broad biography across many projects.'
+      );
+
+      assert.ok(topicalIdx !== -1, 'Topical user node should be included');
+      assert.ok(broadIdx !== -1, 'Broad user node should still be included');
+      assert.ok(topicalIdx < broadIdx, 'Topical user node should rank ahead of broad biography/admin node');
+    });
+
+    it('softly downweights broad biography-admin nodes without excluding them in focused product contexts', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-soft-downweight',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/bio/profile',
+              value: 'Personal background: prefers biography-first framing and administrative summaries.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/memrok/debugging',
+              value: 'Currently debugging Memrok product issues in injector ranking for topic 540.',
+            },
+            {
+              operation: 'add',
+              layer: 'agent',
+              category: 'skill',
+              key: 'agent/testing',
+              value: 'Can trace ranking regressions with focused tests.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, {
+        tokenBudget: 220,
+        layerWeights: { user: 0.75, agent: 0.15, collaboration: 0.1 },
+      });
+      const header = injector.assemble({
+        recentMessages: 'Debug Memrok topic 540 ranking bug in the injector and fix product selection behavior.',
+      });
+
+      const broadNode = (header.debugNodes ?? []).find((node) => node.key === 'user/bio/profile');
+      const topicalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/memrok/debugging');
+
+      assert.ok(topicalNode, 'Topical user node should be selected');
+      assert.ok(broadNode, 'Broad biography/admin node should still be selected under a soft downweight');
+      assert.ok(
+        (topicalNode?.score ?? 0) > (broadNode?.score ?? 0),
+        'Topical user node should outscore the broad biography/admin node'
+      );
+    });
   });
 
   describe('token budget enforcement', () => {

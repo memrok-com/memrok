@@ -40,6 +40,21 @@ const STOPWORDS = new Set([
   'its', 'our', 'their', 'what', 'which', 'who', 'when', 'where', 'how',
 ]);
 
+const PRODUCT_DEBUG_KEYWORDS = new Set([
+  'product', 'feature', 'features', 'bug', 'bugs', 'debug', 'debugging',
+  'issue', 'issues', 'error', 'errors', 'failure', 'failures', 'failing',
+  'fix', 'fixes', 'regression', 'regressions', 'test', 'tests', 'build',
+  'builds', 'deploy', 'release', 'code', 'coding', 'injector', 'ranking',
+  'selection', 'topic', 'topics', 'context', 'qa', 'broken',
+]);
+
+const BROAD_BIO_ADMIN_KEYWORDS = new Set([
+  'admin', 'administrative', 'biography', 'bio', 'background', 'profile',
+  'profiles', 'identity', 'personal', 'personally', 'about', 'role', 'roles',
+  'title', 'titles', 'preference', 'preferences', 'style', 'tone', 'routine',
+  'routines', 'schedule', 'schedules', 'timezone', 'location', 'demographic',
+]);
+
 function tokenize(text: string): Set<string> {
   return new Set(
     text
@@ -115,6 +130,58 @@ function computeSemanticScore(
 
   if (denominator === 0) return 0.5;
   return numerator / denominator;
+}
+
+function computeQueryCoverageScore(
+  nodeKey: string,
+  queryKeywords: Set<string>,
+  kwCache: KeywordCache,
+): number {
+  if (queryKeywords.size === 0) return 0;
+
+  const nkw = kwCache.nodeKeywords.get(nodeKey);
+  if (!nkw || nkw.size === 0) return 0;
+
+  let numerator = 0;
+  let denominator = 0;
+
+  for (const kw of queryKeywords) {
+    const weight = kwCache.idf.get(kw) ?? 0;
+    denominator += weight;
+    if (nkw.has(kw)) {
+      numerator += weight;
+    }
+  }
+
+  if (denominator === 0) return 0;
+  return numerator / denominator;
+}
+
+function countKeywordOverlap(tokens: Set<string>, keywords: Set<string>): number {
+  let matches = 0;
+  for (const token of tokens) {
+    if (keywords.has(token)) matches++;
+  }
+  return matches;
+}
+
+function isProductDebugFocused(queryKeywords: Set<string>): boolean {
+  return countKeywordOverlap(queryKeywords, PRODUCT_DEBUG_KEYWORDS) >= 2;
+}
+
+function computeBroadBioAdminScore(node: Node): number {
+  const tokens = tokenize(`${node.key} ${node.category} ${node.value}`);
+  const matches = countKeywordOverlap(tokens, BROAD_BIO_ADMIN_KEYWORDS);
+
+  let score = Math.min(1, matches / 4);
+  if (node.category === 'preference' || node.category === 'pref') {
+    score = Math.max(score, 0.45);
+  }
+  if (node.key.includes('/bio') || node.key.includes('/profile') || node.key.includes('/admin')) {
+    score = Math.max(score, 0.7);
+  }
+
+  return score;
 }
 
 function truncateValue(value: string, maxChars: number): string {
@@ -211,6 +278,7 @@ export function createInjector(
 
     // Tokenize query; empty query falls back to 0.5 per-node inside computeSemanticScore
     const queryKeywords = recentMessages ? tokenize(recentMessages) : new Set<string>();
+    const productDebugFocused = isProductDebugFocused(queryKeywords);
 
     // Group by layer and score
     const layerNodes: Record<LayerName, { node: Node; score: number }[]> = {
@@ -223,10 +291,25 @@ export function createInjector(
       const layer = node.layer as LayerName;
       if (!(layer in layerNodes)) continue;
       const semantic = computeSemanticScore(node.key, queryKeywords, kwCache);
-      layerNodes[layer].push({
-        node,
-        score: scoreNode(node, weights, maxAge, semantic),
-      });
+      const queryCoverage = computeQueryCoverageScore(node.key, queryKeywords, kwCache);
+      let score = scoreNode(node, weights, maxAge, semantic);
+
+      if (layer === 'user' && queryKeywords.size > 0) {
+        score += 0.2 * queryCoverage;
+        if (queryCoverage >= 0.5) {
+          score += 0.08;
+        }
+      }
+
+      if (productDebugFocused) {
+        const broadBioAdminScore = computeBroadBioAdminScore(node);
+        if (broadBioAdminScore > 0) {
+          const semanticMismatch = Math.max(0, 1 - semantic);
+          score -= broadBioAdminScore * semanticMismatch * 0.18;
+        }
+      }
+
+      layerNodes[layer].push({ node, score });
     }
 
     // Sort each layer by score descending
@@ -267,10 +350,13 @@ export function createInjector(
           const candidate = remaining[i];
           const categoryKey = `${candidate.node.layer}:${candidate.node.category}`;
           if ((categoryCounts.get(categoryKey) ?? 0) >= 2) continue;
-          const maxSimilarity = selectedValues.length === 0
-            ? 0
-            : Math.max(...selectedValues.map((value) => similarityScore(candidate.node.value, value)));
-          const adjustedScore = candidate.score - (maxSimilarity * 0.15);
+          const similarities = selectedValues.map((value) => similarityScore(candidate.node.value, value));
+          const maxSimilarity = similarities.length === 0 ? 0 : Math.max(...similarities);
+          const avgSimilarity =
+            similarities.length === 0
+              ? 0
+              : similarities.reduce((sum, value) => sum + value, 0) / similarities.length;
+          const adjustedScore = candidate.score - (maxSimilarity * 0.18) - (avgSimilarity * 0.08);
           if (adjustedScore > bestAdjustedScore) {
             bestAdjustedScore = adjustedScore;
             bestIndex = i;
