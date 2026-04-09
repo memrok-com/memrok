@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS working_set_snapshot_items (
     snapshot_id INTEGER NOT NULL,
     node_key    TEXT NOT NULL,
     pass_id     TEXT,
+    mutation_id INTEGER,
     layer       TEXT NOT NULL,
     category    TEXT NOT NULL,
     value       TEXT NOT NULL,
@@ -148,11 +149,13 @@ CREATE TABLE IF NOT EXISTS working_set_snapshot_items (
     reason      TEXT,
     FOREIGN KEY (snapshot_id) REFERENCES working_set_snapshots(id) ON DELETE CASCADE,
     FOREIGN KEY (pass_id) REFERENCES passes(pass_id) ON DELETE SET NULL,
+    FOREIGN KEY (mutation_id) REFERENCES mutations(id) ON DELETE SET NULL,
     CHECK (layer IN ('user', 'agent', 'collaboration'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_snapshot_id ON working_set_snapshot_items(snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_pass_id ON working_set_snapshot_items(pass_id);
+CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_mutation_id ON working_set_snapshot_items(mutation_id);
 `;
 
 function getCurrentVersion(db: Database.Database): number {
@@ -180,7 +183,7 @@ export function initSchema(db: Database.Database): void {
     db.exec(SCHEMA_V2);
     db.prepare(
       'INSERT INTO schema_version (version, description) VALUES (?, ?)'
-    ).run(CURRENT_VERSION, 'Archive observations, derived artifacts, and working set traces');
+    ).run(CURRENT_VERSION, 'Archive observations, derived artifacts, and working set traces with mutation provenance');
     return;
   }
 
@@ -193,5 +196,14 @@ export function initSchema(db: Database.Database): void {
     db.prepare(
       'INSERT INTO schema_version (version, description) VALUES (?, ?)'
     ).run(2, 'Archive observations, derived artifacts, and working set traces');
+  }
+  if (currentVersion < 3) {
+    if (!columnExists(db, 'working_set_snapshot_items', 'mutation_id')) {
+      db.exec('ALTER TABLE working_set_snapshot_items ADD COLUMN mutation_id INTEGER REFERENCES mutations(id) ON DELETE SET NULL');
+    }
+    db.exec('CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_mutation_id ON working_set_snapshot_items(mutation_id)');
+    db.prepare(
+      'INSERT INTO schema_version (version, description) VALUES (?, ?)'
+    ).run(3, 'Store working set mutation provenance');
   }
 }

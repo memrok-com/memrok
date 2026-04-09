@@ -590,7 +590,7 @@ describe('injector', () => {
   });
 
   describe('working set traces', () => {
-    it('persists working set snapshots with pass provenance', () => {
+    it('persists working set snapshots with pass and mutation provenance', () => {
       store.applyPass(
         makePass({
           pass_id: 'trace-pass',
@@ -605,6 +605,7 @@ describe('injector', () => {
           ],
         })
       );
+      const latestMutationId = store.getHistory('user/trace').at(-1)?.id ?? null;
 
       const injector = createInjector(store, { workingSetSnapshotLimit: 5 });
       injector.assemble({ recentMessages: 'trace this selection', sessionId: 'session-trace' });
@@ -618,6 +619,7 @@ describe('injector', () => {
       assert.equal(snapshot.items.length, 1);
       assert.equal(snapshot.items[0].node_key, 'user/trace');
       assert.equal(snapshot.items[0].pass_id, 'trace-pass');
+      assert.equal(snapshot.items[0].mutation_id, latestMutationId);
     });
   });
 

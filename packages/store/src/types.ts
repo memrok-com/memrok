@@ -137,6 +137,7 @@ export interface WorkingSetSnapshotItem {
   snapshot_id: number;
   node_key: string;
   pass_id: string | null;
+  mutation_id: number | null;
   layer: 'user' | 'agent' | 'collaboration';
   category: string;
   value: string;
@@ -154,6 +155,7 @@ export interface CreateWorkingSetSnapshotInput {
   items: Array<{
     nodeKey: string;
     passId?: string | null;
+    mutationId?: number | null;
     layer: 'user' | 'agent' | 'collaboration';
     category: string;
     value: string;

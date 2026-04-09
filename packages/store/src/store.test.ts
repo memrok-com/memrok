@@ -405,6 +405,7 @@ describe('Store', () => {
         }),
         derived_artifact_id: artifact.id,
       });
+      const latestMutationId = store.getHistory('user/archive-layer').at(-1)?.id ?? null;
 
       const trace = store.createWorkingSetSnapshot({
         sessionId: 'session-42',
@@ -416,6 +417,7 @@ describe('Store', () => {
           {
             nodeKey: 'user/archive-layer',
             passId: 'prov-pass',
+            mutationId: latestMutationId,
             layer: 'user',
             category: 'preference',
             value: 'Wants explicit archive layer boundaries.',
@@ -428,9 +430,64 @@ describe('Store', () => {
 
       const provenance = store.getProvenanceForWorkingSetSnapshot(trace.id);
       assert.equal(provenance.length, 1);
+      assert.equal(store.getWorkingSetSnapshot(trace.id)?.items[0].mutation_id, latestMutationId);
+      assert.equal(latestMutationId, 1);
       assert.equal(provenance[0].pass?.pass_id, 'prov-pass');
       assert.equal(provenance[0].artifact?.id, artifact.id);
       assert.equal(provenance[0].observation?.id, observation.id);
+    });
+
+    it('keeps working set mutation provenance aligned with node lineage', () => {
+      store.applyPass(makePass({
+        pass_id: 'prov-pass-1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'user',
+            category: 'preference',
+            key: 'user/prov-lineage',
+            value: 'Initial value.',
+          },
+        ],
+      }));
+      store.applyPass(makePass({
+        pass_id: 'prov-pass-2',
+        mutations: [
+          {
+            operation: 'update',
+            layer: 'user',
+            category: 'preference',
+            key: 'user/prov-lineage',
+            value: 'Curated latest value.',
+          },
+        ],
+      }));
+
+      const latestMutation = store.getHistory('user/prov-lineage').at(-1);
+      assert.ok(latestMutation);
+
+      const trace = store.createWorkingSetSnapshot({
+        headerText: 'header',
+        headerTokens: 3,
+        nodesUsed: 1,
+        items: [
+          {
+            nodeKey: 'user/prov-lineage',
+            passId: 'prov-pass-2',
+            mutationId: latestMutation.id,
+            layer: 'user',
+            category: 'preference',
+            value: 'Curated latest value.',
+            score: 0.8,
+            rawScore: 0.75,
+          },
+        ],
+      });
+
+      const snapshot = store.getWorkingSetSnapshot(trace.id);
+      assert.equal(snapshot?.items[0].mutation_id, latestMutation.id);
+      assert.equal(snapshot?.items[0].pass_id, latestMutation.pass_id);
+      assert.equal(store.getHistory(snapshot!.items[0].node_key).at(-1)?.id, snapshot?.items[0].mutation_id);
     });
   });
 });

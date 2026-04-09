@@ -80,6 +80,7 @@ export function createStore(dbPath: string): Store {
       snapshot_id: row.snapshot_id as number,
       node_key: row.node_key as string,
       pass_id: (row.pass_id as string | null) ?? null,
+      mutation_id: (row.mutation_id as number | null) ?? null,
       layer: row.layer as WorkingSetSnapshotItem['layer'],
       category: row.category as string,
       value: row.value as string,
@@ -164,6 +165,10 @@ export function createStore(dbPath: string): Store {
     'SELECT * FROM mutations WHERE key = ? AND pass_id = ? ORDER BY id DESC LIMIT 1'
   );
 
+  const getMutationById = db.prepare(
+    'SELECT * FROM mutations WHERE id = ?'
+  );
+
   const getAllPasses = db.prepare(
     'SELECT * FROM passes ORDER BY timestamp ASC'
   );
@@ -183,9 +188,9 @@ export function createStore(dbPath: string): Store {
 
   const insertWorkingSetSnapshotItem = db.prepare(`
     INSERT INTO working_set_snapshot_items
-      (snapshot_id, node_key, pass_id, layer, category, value, score, raw_score, reason)
+      (snapshot_id, node_key, pass_id, mutation_id, layer, category, value, score, raw_score, reason)
     VALUES
-      (@snapshot_id, @node_key, @pass_id, @layer, @category, @value, @score, @raw_score, @reason)
+      (@snapshot_id, @node_key, @pass_id, @mutation_id, @layer, @category, @value, @score, @raw_score, @reason)
   `);
 
   const getWorkingSetSnapshotById = db.prepare(
@@ -398,6 +403,7 @@ export function createStore(dbPath: string): Store {
         snapshot_id: snapshotId,
         node_key: item.nodeKey,
         pass_id: item.passId ?? null,
+        mutation_id: item.mutationId ?? null,
         layer: item.layer,
         category: item.category,
         value: item.value,
@@ -527,11 +533,18 @@ export function createStore(dbPath: string): Store {
     getProvenanceForPass,
     getProvenanceForWorkingSetSnapshot: (snapshotId: number) => {
       const items = getWorkingSetSnapshotItemsById.all(snapshotId) as Array<Record<string, unknown>>;
+      const seenMutations = new Set<number>();
       const seenPasses = new Set<string>();
       const links: ProvenanceLink[] = [];
       for (const item of items) {
-        const passId = (item.pass_id as string | null) ?? null;
+        const mutationId = (item.mutation_id as number | null) ?? null;
+        if (mutationId !== null && seenMutations.has(mutationId)) continue;
+        const mutation = mutationId !== null
+          ? (getMutationById.get(mutationId) as Mutation | undefined)
+          : undefined;
+        const passId = mutation?.pass_id ?? ((item.pass_id as string | null) ?? null);
         if (!passId || seenPasses.has(passId)) continue;
+        if (mutationId !== null) seenMutations.add(mutationId);
         seenPasses.add(passId);
         links.push(getProvenanceForPass(passId));
       }

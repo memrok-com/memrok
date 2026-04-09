@@ -41,7 +41,7 @@ Memrok sits between your conversations and your agent's context window:
    - A _transcript scribe_ extracts facts, preferences, and patterns in near-real-time
    - A _reflective scribe_ periodically steps back to find deeper insights and meta-patterns
 3. **Curate** — Derived artifacts update the memory graph, where supersession, expiry, and judged curation live
-4. **Inject** — On every agent turn, Memrok selects a typed working set from the graph, renders a header from that working set, and prepends it to the conversation
+4. **Inject** — On every agent turn, Memrok selects a typed working set from the graph, renders a header from that working set, and prepends it to the conversation. Working-set traces keep a cheap shortcut back to the latest supporting mutation while full lineage remains in graph history.
 
 The result: your agent starts each session already knowing what matters, with a cleaner provenance trail from raw observation to injected context.
 

@@ -604,6 +604,7 @@ export function createInjector(
         const selected = remaining.splice(bestIndex, 1)[0];
         const { node, rawScore } = selected;
         if (isNearDuplicate(node.value, selectedValues)) continue;
+        const latestMutation = store.getHistory(node.key).at(-1) ?? null;
         const categoryKey = `${node.layer}:${node.category}`;
         const line = `- ${truncateValue(node.value, maxNodeChars)}\n`;
         const lineTokens = estimateTokens(line);
@@ -633,6 +634,7 @@ export function createInjector(
         workingSetItems.push({
           key: node.key,
           passId: node.last_pass_id ?? null,
+          mutationId: latestMutation?.id ?? null,
           layer,
           category: node.category,
           value: node.value,
@@ -739,6 +741,7 @@ export function createInjector(
         items: workingSet.items.map((item) => ({
           nodeKey: item.key,
           passId: item.passId,
+          mutationId: item.mutationId,
           layer: item.layer,
           category: item.category,
           value: item.value,

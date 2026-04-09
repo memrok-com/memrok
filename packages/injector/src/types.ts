@@ -60,6 +60,7 @@ export interface ContextHeaderDebugNode {
 export interface WorkingSetItem {
   key: string;
   passId: string | null;
+  mutationId: number | null;
   layer: 'user' | 'agent' | 'collaboration';
   category: string;
   value: string;
