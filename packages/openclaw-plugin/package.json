@@ -1,6 +1,6 @@
 {
   "name": "memrok",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "type": "module",
   "description": "Memory with judgment. A graph-based curation layer for OpenClaw, complementing built-in recall and dreaming with explicit supersession, expiry, and topic-aware selection.",
   "main": "dist/index.js",

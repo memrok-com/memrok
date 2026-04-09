@@ -75,6 +75,183 @@ const BROAD_BIO_ADMIN_KEYWORDS = new Set([
   'routines', 'schedule', 'schedules', 'timezone', 'location', 'demographic',
 ]);
 
+const PROJECT_ANCHOR_ALIASES = new Set([
+  'memrok', 'priomind', 'tandem', 'zhaw', 'fcl', 'orbitals', 'fizzy', 'openclaw',
+]);
+
+const PERSON_MARKER_SEGMENTS = new Set([
+  'person', 'people', 'contact', 'contacts', 'relationship', 'relationships',
+]);
+
+const GENERIC_ANCHOR_SEGMENTS = new Set([
+  'user', 'agent', 'collaboration', 'collab', 'profile', 'bio', 'admin',
+  'pref', 'preference', 'belief', 'decision', 'dynamic', 'skill', 'pattern',
+  'project', 'projects', 'topic', 'topics', 'work', 'state', 'current',
+  'style', 'process', 'trust', 'friction', 'priority', 'fact',
+]);
+
+type AnchorKind = 'person' | 'project' | 'topic';
+
+interface AnchorSet {
+  person: Set<string>;
+  project: Set<string>;
+  topic: Set<string>;
+}
+
+function createEmptyAnchorSet(): AnchorSet {
+  return {
+    person: new Set<string>(),
+    project: new Set<string>(),
+    topic: new Set<string>(),
+  };
+}
+
+function normalizeAnchorId(value: string): string | null {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized.length >= 2 ? normalized : null;
+}
+
+function addAnchor(set: AnchorSet, kind: AnchorKind, rawId: string): void {
+  const id = normalizeAnchorId(rawId);
+  if (!id) return;
+  set[kind].add(id);
+}
+
+function listAnchorIds(set: AnchorSet): string[] {
+  return (['person', 'project', 'topic'] as const)
+    .flatMap((kind) => Array.from(set[kind]).sort().map((id) => `${kind}:${id}`));
+}
+
+function hasAnchors(set: AnchorSet): boolean {
+  return set.person.size > 0 || set.project.size > 0 || set.topic.size > 0;
+}
+
+function findProjectAnchor(segments: string[]): string | null {
+  for (const segment of segments) {
+    if (PROJECT_ANCHOR_ALIASES.has(segment)) return segment;
+  }
+  return null;
+}
+
+function findPersonAnchor(segments: string[]): string | null {
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (PERSON_MARKER_SEGMENTS.has(segments[i])) {
+      const personId = normalizeAnchorId(segments[i + 1]);
+      if (personId) return personId;
+    }
+  }
+  return null;
+}
+
+function findStructuralTopicAnchor(segments: string[]): string | null {
+  const project = findProjectAnchor(segments);
+  if (project) {
+    const projectIndex = segments.indexOf(project);
+    for (let i = projectIndex + 1; i < segments.length; i++) {
+      const segment = segments[i];
+      if (GENERIC_ANCHOR_SEGMENTS.has(segment)) continue;
+      const topicId = normalizeAnchorId(`${project}-${segment}`);
+      if (topicId) return topicId;
+    }
+  }
+
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (segments[i] === 'topic' || segments[i] === 'topics') {
+      const topicId = normalizeAnchorId(`topic-${segments[i + 1]}`);
+      if (topicId) return topicId;
+    }
+  }
+
+  return null;
+}
+
+function extractExplicitTopicAnchors(text: string, anchors: AnchorSet): void {
+  for (const match of text.matchAll(/\btopic[-\s#:/]*([a-z0-9][a-z0-9-]*)\b/gi)) {
+    addAnchor(anchors, 'topic', `topic-${match[1]}`);
+  }
+  for (const match of text.matchAll(/\bcard[-\s#:/]*([a-z0-9][a-z0-9-]*)\b/gi)) {
+    addAnchor(anchors, 'topic', `card-${match[1]}`);
+  }
+}
+
+function extractPersonAnchorsFromText(text: string, anchors: AnchorSet): void {
+  for (const match of text.matchAll(/\b(?:with|person|people|contact|contacts|partner|client|teammate|colleague)\s+([A-Z][a-z0-9_-]{2,})\b/g)) {
+    if (!PROJECT_ANCHOR_ALIASES.has(match[1].toLowerCase())) {
+      addAnchor(anchors, 'person', match[1]);
+    }
+  }
+}
+
+function extractQueryAnchors(text: string, queryKeywords: Set<string>): AnchorSet {
+  const anchors = createEmptyAnchorSet();
+  extractExplicitTopicAnchors(text, anchors);
+  extractPersonAnchorsFromText(text, anchors);
+
+  for (const keyword of queryKeywords) {
+    if (PROJECT_ANCHOR_ALIASES.has(keyword)) {
+      addAnchor(anchors, 'project', keyword);
+    }
+  }
+
+  return anchors;
+}
+
+function extractNodeAnchors(node: Node): AnchorSet {
+  const anchors = createEmptyAnchorSet();
+  const segments = getKeySegments(node.key);
+  const project = findProjectAnchor(segments);
+  const person = findPersonAnchor(segments);
+  const topic = findStructuralTopicAnchor(segments);
+
+  if (project) addAnchor(anchors, 'project', project);
+  if (person) addAnchor(anchors, 'person', person);
+  if (topic) addAnchor(anchors, 'topic', topic);
+  extractExplicitTopicAnchors(`${node.key} ${node.value}`, anchors);
+
+  return anchors;
+}
+
+function scoreAnchorAlignment(
+  nodeAnchors: AnchorSet,
+  queryAnchors: AnchorSet,
+  queryCoverage: number,
+): { boost: number; penalty: number; matches: string[] } {
+  if (!hasAnchors(queryAnchors)) {
+    return { boost: 0, penalty: 0, matches: [] };
+  }
+
+  let boost = 0;
+  let penalty = 0;
+  const matches: string[] = [];
+  const weights: Record<AnchorKind, { boost: number; penalty: number }> = {
+    person: { boost: 0.18, penalty: 0.12 },
+    project: { boost: 0.18, penalty: 0.14 },
+    topic: { boost: 0.3, penalty: 0.22 },
+  };
+
+  for (const kind of ['person', 'project', 'topic'] as const) {
+    const queryIds = queryAnchors[kind];
+    const nodeIds = nodeAnchors[kind];
+    if (queryIds.size === 0 || nodeIds.size === 0) continue;
+
+    const overlap = Array.from(nodeIds).filter((id) => queryIds.has(id));
+    if (overlap.length > 0) {
+      boost += weights[kind].boost + ((overlap.length - 1) * 0.04);
+      matches.push(...overlap.map((id) => `${kind}:${id}`));
+      continue;
+    }
+
+    if (queryCoverage < 0.2) {
+      penalty += weights[kind].penalty;
+    }
+  }
+
+  return { boost, penalty, matches: matches.sort() };
+}
+
 function tokenize(text: string): Set<string> {
   return new Set(
     text
@@ -360,10 +537,14 @@ interface ScoredCandidate {
   domainMatch: boolean | null;
   outOfContextRisk: number;
   selectedBecause: string[];
+  anchorIds: string[];
+  matchedAnchorIds: string[];
   scoreAdjustments: {
     queryCoverageBoost: number;
     keyMatchBoost: number;
     domainBoost: number;
+    anchorBoost: number;
+    anchorMismatchPenalty: number;
     broadBioPenalty: number;
     genericMetaPenalty: number;
     crossDomainPenalty: number;
@@ -424,6 +605,7 @@ export function createInjector(
     const queryKeywords = recentMessages ? tokenize(recentMessages) : new Set<string>();
     const productDebugFocused = isProductDebugFocused(queryKeywords);
     const domainFocus = detectDomainFocus(queryKeywords);
+    const queryAnchors = extractQueryAnchors(recentMessages, queryKeywords);
 
     // Group by layer and score
     const layerNodes: Record<LayerName, ScoredCandidate[]> = {
@@ -440,6 +622,7 @@ export function createInjector(
       const baseScore = scoreNode(node, weights, maxAge, semantic);
       let score = baseScore;
       const nodeDomain = classifyNodeDomain(node);
+      const nodeAnchors = extractNodeAnchors(node);
       const genericMetaScore = computeGenericMetaScore(node);
       const keyTokenCoverage = queryKeywords.size > 0
         ? countKeywordOverlap(queryKeywords, tokenize(node.key))
@@ -447,6 +630,9 @@ export function createInjector(
       let queryCoverageBoost = 0;
       let keyMatchBoost = 0;
       let domainBoost = 0;
+      let anchorBoost = 0;
+      let anchorMismatchPenalty = 0;
+      let matchedAnchorIds: string[] = [];
       let broadBioPenalty = 0;
       let genericMetaPenalty = 0;
       let crossDomainPenalty = 0;
@@ -467,6 +653,24 @@ export function createInjector(
           keyMatchBoost += 0.04;
         }
         score += keyMatchBoost;
+      }
+
+      if (hasAnchors(queryAnchors)) {
+        const anchorAlignment = scoreAnchorAlignment(nodeAnchors, queryAnchors, queryCoverage);
+        anchorBoost = anchorAlignment.boost;
+        anchorMismatchPenalty = anchorAlignment.penalty;
+        matchedAnchorIds = anchorAlignment.matches;
+        score += anchorBoost;
+        score -= anchorMismatchPenalty;
+        if (matchedAnchorIds.some((id) => id.startsWith('topic:'))) {
+          selectedBecause.push('topic-anchor match');
+        }
+        if (matchedAnchorIds.some((id) => id.startsWith('project:'))) {
+          selectedBecause.push('project-anchor match');
+        }
+        if (matchedAnchorIds.some((id) => id.startsWith('person:'))) {
+          selectedBecause.push('person-anchor match');
+        }
       }
 
       if (productDebugFocused) {
@@ -515,6 +719,8 @@ export function createInjector(
         family: getNodeFamily(node),
         domain: nodeDomain,
         domainMatch: domainFocus ? nodeDomain === domainFocus : null,
+        anchorIds: listAnchorIds(nodeAnchors),
+        matchedAnchorIds,
         outOfContextRisk: computeOutOfContextRisk({
           queryKeywords,
           semantic,
@@ -528,6 +734,8 @@ export function createInjector(
           queryCoverageBoost,
           keyMatchBoost,
           domainBoost,
+          anchorBoost,
+          anchorMismatchPenalty,
           broadBioPenalty,
           genericMetaPenalty,
           crossDomainPenalty,
@@ -651,6 +859,8 @@ export function createInjector(
           domainMatch: selected.domainMatch,
           outOfContextRisk: selected.outOfContextRisk,
           selectedBecause: selected.selectedBecause,
+          anchorIds: selected.anchorIds,
+          matchedAnchorIds: selected.matchedAnchorIds,
           scoreAdjustments: {
             ...selected.scoreAdjustments,
             selectionSimilarityPenalty,
@@ -700,6 +910,8 @@ export function createInjector(
           domainMatch: item.domainMatch,
           outOfContextRisk: item.outOfContextRisk,
           selectedBecause: item.selectedBecause,
+          anchorIds: item.anchorIds,
+          matchedAnchorIds: item.matchedAnchorIds,
           scoreAdjustments: item.scoreAdjustments,
         }))
       );

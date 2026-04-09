@@ -44,10 +44,14 @@ export interface ContextHeaderDebugNode {
   domainMatch: boolean | null;
   outOfContextRisk: number;
   selectedBecause: string[];
+  anchorIds: string[];
+  matchedAnchorIds: string[];
   scoreAdjustments: {
     queryCoverageBoost: number;
     keyMatchBoost: number;
     domainBoost: number;
+    anchorBoost: number;
+    anchorMismatchPenalty: number;
     broadBioPenalty: number;
     genericMetaPenalty: number;
     crossDomainPenalty: number;
@@ -77,6 +81,8 @@ export interface WorkingSetItem {
   domainMatch: boolean | null;
   outOfContextRisk: number;
   selectedBecause: string[];
+  anchorIds: string[];
+  matchedAnchorIds: string[];
   scoreAdjustments: ContextHeaderDebugNode['scoreAdjustments'];
 }
 

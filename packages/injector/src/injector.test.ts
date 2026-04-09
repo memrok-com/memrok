@@ -587,6 +587,111 @@ describe('injector', () => {
       assert.ok(selectedKeys.includes('user/priomind/pricing/value'), 'Distinct pricing family should survive judged selection');
       assert.ok(landingKeys.length <= 2, 'Selection should avoid overpacking one landing family cluster');
     });
+
+    it('prefers Tandem topic-local anchors over globally salient same-project memories', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-tandem-topic-anchors',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/tandem/topic-540/ranking',
+              value: 'Tandem topic 540 is about Memrok ranking fixes, judged recall, and cross-topic bleed.',
+              signals: { emotional_weight: 0.2 },
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/tandem/topic-612/community',
+              value: 'Tandem topic 612 is about community rituals and forum moderation defaults.',
+              signals: { emotional_weight: 0.95, correction: true },
+            },
+          ],
+        })
+      );
+
+      for (let i = 0; i < 4; i++) {
+        store.applyPass(
+          makePass({
+            pass_id: `p-tandem-global-${i}`,
+            mutations: [
+              {
+                operation: 'update',
+                layer: 'user',
+                category: 'project',
+                key: 'user/tandem/topic-612/community',
+                value: 'Tandem topic 612 is about community rituals and forum moderation defaults.',
+                signals: { emotional_weight: 0.95, correction: true },
+              },
+            ],
+          })
+        );
+      }
+
+      const injector = createInjector(store, {
+        tokenBudget: 180,
+        layerWeights: { user: 1, agent: 0, collaboration: 0 },
+      });
+      const header = injector.assemble({
+        recentMessages: 'Tandem topic 540: reduce cross-topic bleed in Memrok ranking and judged recall.',
+      });
+
+      const localNode = (header.debugNodes ?? []).find((node) => node.key === 'user/tandem/topic-540/ranking');
+      const globalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/tandem/topic-612/community');
+
+      assert.ok(localNode, 'Local Tandem topic node should be selected');
+      assert.ok(globalNode, 'Same-project competing node may still survive under soft suppression');
+      assert.ok((localNode?.score ?? 0) > (globalNode?.score ?? 0), 'Topic-local anchor should outrank globally salient same-project memory');
+      assert.ok((localNode?.matchedAnchorIds ?? []).includes('project:tandem'));
+      assert.ok((localNode?.matchedAnchorIds ?? []).includes('topic:topic-540'));
+      assert.ok((localNode?.selectedBecause ?? []).includes('topic-anchor match'));
+      assert.ok(((globalNode?.scoreAdjustments.anchorMismatchPenalty ?? 0) > 0), 'Competing Tandem topic should take an anchor mismatch penalty');
+    });
+
+    it('supports person anchors as a local retrieval prior without changing anchor-free behavior', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-person-anchor',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'collaboration',
+              category: 'relationship',
+              key: 'collaboration/people/tobi/feedback-style',
+              value: 'With Tobi, keep the review loop concrete and short.',
+            },
+            {
+              operation: 'add',
+              layer: 'collaboration',
+              category: 'relationship',
+              key: 'collaboration/people/mira/feedback-style',
+              value: 'With Mira, compare multiple framing options before deciding.',
+              signals: { emotional_weight: 0.9, correction: true },
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, {
+        tokenBudget: 220,
+        layerWeights: { user: 0.2, agent: 0.2, collaboration: 0.6 },
+      });
+      const header = injector.assemble({
+        recentMessages: 'Prepare feedback with Tobi about the ranking draft.',
+      });
+
+      const tobiNode = (header.debugNodes ?? []).find((node) => node.key === 'collaboration/people/tobi/feedback-style');
+      const miraNode = (header.debugNodes ?? []).find((node) => node.key === 'collaboration/people/mira/feedback-style');
+
+      assert.ok(tobiNode, 'Person-local collaboration node should be selected');
+      assert.ok(miraNode, 'Other person node may still survive under soft suppression');
+      assert.ok((tobiNode?.score ?? 0) > (miraNode?.score ?? 0), 'Matching person anchor should outrank more globally salient alternative');
+      assert.ok((tobiNode?.matchedAnchorIds ?? []).includes('person:tobi'));
+      assert.ok((tobiNode?.selectedBecause ?? []).includes('person-anchor match'));
+    });
   });
 
   describe('working set traces', () => {
