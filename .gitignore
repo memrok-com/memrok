@@ -5,6 +5,7 @@ dist/
 *.sqlite-journal
 .env
 .env.*
+tmp/
 
 # Test data (contains private transcript content)
 **/test-transcript*.txt
