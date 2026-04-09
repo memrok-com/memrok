@@ -30,3 +30,13 @@ Pull requests should explain the user-facing impact, note affected packages, and
 
 ## Security & Configuration Tips
 Do not commit local databases, API keys, or exported memory snapshots. Treat `~/.memrok/memrok.db` and transcript inputs as sensitive. Prefer fixture data over real conversation logs in tests and docs.
+
+## Agent Workflow Notes
+For any coding agent working in this repo (Codex, Claude Code, etc.):
+
+- **Verify packaging with a real isolated install before closing install/distribution issues.** The canonical check is an isolated `HOME` run of `openclaw plugins install clawhub:memrok`, not just `npm run build`.
+- **Do not treat partial progress notes as completion.** A task is only done when you can name the changed files, the verification steps, and the resulting behavior.
+- **Prefer bounded changes over broad rewrites.** Memrok improves best through tight loops: inspect → patch → test/build → evaluate across topics.
+- **Cross-topic QA matters.** A ranking tweak that improves the Memrok topic but worsens General/PrioMind/ZHAW is not a good fix.
+- **Keep Memrok distinct from OpenClaw’s built-in memory.** Favor graph curation, supersession, expiry, topic-aware judged recall, and inspectability over generic recall duplication.
+- **Use the inspection tooling before guessing.** `scripts/inspect-header.mjs`, `scripts/eval-topics.mjs`, `scripts/inspect-reflection.mjs`, `scripts/manual-reflection.mjs`, and `scripts/inspect-lifecycle.mjs` exist to make memory quality and curation behavior visible.

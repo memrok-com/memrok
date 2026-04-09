@@ -70,8 +70,49 @@ describe('Store', () => {
       assert.equal(passes.length, 1);
       assert.equal(passes[0].pass_id, 'test-pass-001');
       assert.equal(passes[0].source, 'transcript-abc.jsonl');
+      assert.equal(passes[0].derived_artifact_id, null);
       assert.equal(passes[0].turns_processed, 20);
       assert.equal(passes[0].mutations_count, 1);
+    });
+  });
+
+  describe('archive observations and derived artifacts', () => {
+    it('persists raw archive observations separately from graph state', () => {
+      const observation = store.createArchiveObservation({
+        kind: 'transcript',
+        source: 'session.jsonl',
+        sessionId: 'session-1',
+        content: 'user: fix the injector boundary',
+        metadata: { offset: 128 },
+      });
+
+      assert.equal(observation.kind, 'transcript');
+      assert.equal(observation.session_id, 'session-1');
+      assert.deepEqual(observation.metadata, { offset: 128 });
+      assert.equal(store.queryNodes().length, 0);
+
+      const observations = store.listArchiveObservations();
+      assert.equal(observations.length, 1);
+      assert.equal(observations[0].id, observation.id);
+    });
+
+    it('persists derived artifacts linked back to observations', () => {
+      const observation = store.createArchiveObservation({
+        kind: 'bootstrap-file',
+        source: 'MEMORY.md',
+        content: '# Existing memory',
+      });
+
+      const artifact = store.createDerivedArtifact({
+        kind: 'scribe-pass-output',
+        observationId: observation.id,
+        content: JSON.stringify(makePass()),
+        metadata: { model: 'test-model' },
+      });
+
+      assert.equal(artifact.observation_id, observation.id);
+      assert.deepEqual(artifact.metadata, { model: 'test-model' });
+      assert.equal(store.listDerivedArtifacts().length, 1);
     });
   });
 
@@ -293,6 +334,103 @@ describe('Store', () => {
       const node = store.getNode('user.content.voice');
       assert.ok(node);
       assert.ok(node.expired_at);
+    });
+  });
+
+  describe('working set traces and provenance', () => {
+    it('records retention-bounded working set traces', () => {
+      const first = store.createWorkingSetSnapshot(
+        {
+          headerText: 'header one',
+          headerTokens: 3,
+          nodesUsed: 1,
+          items: [],
+        },
+        { maxSnapshots: 2 },
+      );
+
+      const second = store.createWorkingSetSnapshot(
+        {
+          headerText: 'header two',
+          headerTokens: 3,
+          nodesUsed: 1,
+          items: [],
+        },
+        { maxSnapshots: 2 },
+      );
+
+      const third = store.createWorkingSetSnapshot(
+        {
+          headerText: 'header three',
+          headerTokens: 3,
+          nodesUsed: 1,
+          items: [],
+        },
+        { maxSnapshots: 2 },
+      );
+
+      const snapshots = store.listWorkingSetSnapshots();
+      assert.equal(snapshots.length, 2);
+      assert.deepEqual(
+        snapshots.map((snapshot) => snapshot.id),
+        [third.id, second.id],
+      );
+      assert.equal(store.getWorkingSetSnapshot(first.id), null);
+    });
+
+    it('traverses provenance from working set trace to archive observation', () => {
+      const observation = store.createArchiveObservation({
+        kind: 'transcript',
+        source: 'session.jsonl',
+        sessionId: 'session-42',
+        content: 'user: keep archive and graph separate',
+      });
+      const artifact = store.createDerivedArtifact({
+        kind: 'scribe-pass-output',
+        observationId: observation.id,
+        content: JSON.stringify(makePass()),
+      });
+      store.applyPass({
+        ...makePass({
+          pass_id: 'prov-pass',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/archive-layer',
+              value: 'Wants explicit archive layer boundaries.',
+            },
+          ],
+        }),
+        derived_artifact_id: artifact.id,
+      });
+
+      const trace = store.createWorkingSetSnapshot({
+        sessionId: 'session-42',
+        query: 'archive layer boundaries',
+        headerText: 'header',
+        headerTokens: 10,
+        nodesUsed: 1,
+        items: [
+          {
+            nodeKey: 'user/archive-layer',
+            passId: 'prov-pass',
+            layer: 'user',
+            category: 'preference',
+            value: 'Wants explicit archive layer boundaries.',
+            score: 0.9,
+            rawScore: 0.85,
+            reason: 'topic match',
+          },
+        ],
+      });
+
+      const provenance = store.getProvenanceForWorkingSetSnapshot(trace.id);
+      assert.equal(provenance.length, 1);
+      assert.equal(provenance[0].pass?.pass_id, 'prov-pass');
+      assert.equal(provenance[0].artifact?.id, artifact.id);
+      assert.equal(provenance[0].observation?.id, observation.id);
     });
   });
 });

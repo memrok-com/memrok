@@ -9,6 +9,16 @@ import type {
   Pass,
   NodeFilter,
   MutationInput,
+  ArchiveObservation,
+  CreateArchiveObservationInput,
+  DerivedArtifact,
+  CreateDerivedArtifactInput,
+  CreateWorkingSetSnapshotInput,
+  WorkingSetRetentionPolicy,
+  WorkingSetSnapshot,
+  WorkingSetSnapshotItem,
+  WorkingSetSnapshotTrace,
+  ProvenanceLink,
 } from './types.js';
 
 export function createStore(dbPath: string): Store {
@@ -17,15 +27,103 @@ export function createStore(dbPath: string): Store {
   db.pragma('foreign_keys = ON');
   initSchema(db);
 
+  function parseJson<T>(value: string | null): T | null {
+    if (!value) return null;
+    return JSON.parse(value) as T;
+  }
+
+  function serializeJson(value: Record<string, unknown> | undefined): string | null {
+    return value === undefined ? null : JSON.stringify(value);
+  }
+
+  function mapArchiveObservation(row: Record<string, unknown> | undefined): ArchiveObservation | null {
+    if (!row) return null;
+    return {
+      id: row.id as number,
+      kind: row.kind as string,
+      source: row.source as string,
+      session_id: (row.session_id as string | null) ?? null,
+      content: row.content as string,
+      metadata: parseJson<Record<string, unknown>>((row.metadata as string | null) ?? null),
+      created_at: row.created_at as string,
+    };
+  }
+
+  function mapDerivedArtifact(row: Record<string, unknown> | undefined): DerivedArtifact | null {
+    if (!row) return null;
+    return {
+      id: row.id as number,
+      kind: row.kind as string,
+      observation_id: (row.observation_id as number | null) ?? null,
+      content: row.content as string,
+      metadata: parseJson<Record<string, unknown>>((row.metadata as string | null) ?? null),
+      created_at: row.created_at as string,
+    };
+  }
+
+  function mapWorkingSetSnapshot(row: Record<string, unknown> | undefined): WorkingSetSnapshot | null {
+    if (!row) return null;
+    return {
+      id: row.id as number,
+      session_id: (row.session_id as string | null) ?? null,
+      query: (row.query as string | null) ?? null,
+      header_text: row.header_text as string,
+      header_tokens: row.header_tokens as number,
+      nodes_used: row.nodes_used as number,
+      created_at: row.created_at as string,
+    };
+  }
+
+  function mapWorkingSetSnapshotItem(row: Record<string, unknown>): WorkingSetSnapshotItem {
+    return {
+      id: row.id as number,
+      snapshot_id: row.snapshot_id as number,
+      node_key: row.node_key as string,
+      pass_id: (row.pass_id as string | null) ?? null,
+      layer: row.layer as WorkingSetSnapshotItem['layer'],
+      category: row.category as string,
+      value: row.value as string,
+      score: row.score as number,
+      raw_score: row.raw_score as number,
+      reason: (row.reason as string | null) ?? null,
+    };
+  }
+
   // Prepared statements
+  const insertArchiveObservation = db.prepare(`
+    INSERT INTO archive_observations (kind, source, session_id, content, metadata)
+    VALUES (@kind, @source, @session_id, @content, @metadata)
+  `);
+
+  const getArchiveObservationById = db.prepare(
+    'SELECT * FROM archive_observations WHERE id = ?'
+  );
+
+  const listArchiveObservationRows = db.prepare(
+    'SELECT * FROM archive_observations ORDER BY id DESC LIMIT ?'
+  );
+
+  const insertDerivedArtifact = db.prepare(`
+    INSERT INTO derived_artifacts (kind, observation_id, content, metadata)
+    VALUES (@kind, @observation_id, @content, @metadata)
+  `);
+
+  const getDerivedArtifactById = db.prepare(
+    'SELECT * FROM derived_artifacts WHERE id = ?'
+  );
+
+  const listDerivedArtifactRows = db.prepare(
+    'SELECT * FROM derived_artifacts ORDER BY id DESC LIMIT ?'
+  );
+
   const insertMutation = db.prepare(`
     INSERT INTO mutations (pass_id, operation, layer, category, key, value, evidence, source, emotional_weight, explicit, correction)
     VALUES (@pass_id, @operation, @layer, @category, @key, @value, @evidence, @source, @emotional_weight, @explicit, @correction)
   `);
 
   const insertPass = db.prepare(`
-    INSERT INTO passes (pass_id, source, model, turns_processed, mutations_count, observations, duration_ms)
-    VALUES (@pass_id, @source, @model, @turns_processed, @mutations_count, @observations, @duration_ms)
+    INSERT INTO passes (pass_id, source, model, derived_artifact_id, turns_processed, mutations_count, observations, duration_ms)
+    VALUES (@pass_id, @source, @model, @derived_artifact_id, @turns_processed, @mutations_count, @observations, @duration_ms)
   `);
 
   const getNodeByKey = db.prepare('SELECT * FROM nodes WHERE key = ?');
@@ -62,12 +160,52 @@ export function createStore(dbPath: string): Store {
     'SELECT * FROM mutations WHERE key = ? ORDER BY id ASC'
   );
 
+  const getLatestMutationByKeyAndPass = db.prepare(
+    'SELECT * FROM mutations WHERE key = ? AND pass_id = ? ORDER BY id DESC LIMIT 1'
+  );
+
   const getAllPasses = db.prepare(
     'SELECT * FROM passes ORDER BY timestamp ASC'
   );
 
+  const getPassById = db.prepare(
+    'SELECT * FROM passes WHERE pass_id = ?'
+  );
+
   const getAllMutationsOrdered = db.prepare(
     'SELECT * FROM mutations ORDER BY id ASC'
+  );
+
+  const insertWorkingSetSnapshot = db.prepare(`
+    INSERT INTO working_set_snapshots (session_id, query, header_text, header_tokens, nodes_used)
+    VALUES (@session_id, @query, @header_text, @header_tokens, @nodes_used)
+  `);
+
+  const insertWorkingSetSnapshotItem = db.prepare(`
+    INSERT INTO working_set_snapshot_items
+      (snapshot_id, node_key, pass_id, layer, category, value, score, raw_score, reason)
+    VALUES
+      (@snapshot_id, @node_key, @pass_id, @layer, @category, @value, @score, @raw_score, @reason)
+  `);
+
+  const getWorkingSetSnapshotById = db.prepare(
+    'SELECT * FROM working_set_snapshots WHERE id = ?'
+  );
+
+  const getWorkingSetSnapshotItemsById = db.prepare(
+    'SELECT * FROM working_set_snapshot_items WHERE snapshot_id = ? ORDER BY id ASC'
+  );
+
+  const listWorkingSetSnapshotRows = db.prepare(
+    'SELECT * FROM working_set_snapshots ORDER BY id DESC LIMIT ?'
+  );
+
+  const deleteWorkingSetSnapshotById = db.prepare(
+    'DELETE FROM working_set_snapshots WHERE id = ?'
+  );
+
+  const listWorkingSetSnapshotIdsForRetention = db.prepare(
+    'SELECT id FROM working_set_snapshots ORDER BY id DESC LIMIT -1 OFFSET ?'
   );
 
   function now(): string {
@@ -176,6 +314,7 @@ export function createStore(dbPath: string): Store {
       pass_id: pass.pass_id,
       source: pass.source ?? null,
       model: pass.model ?? null,
+      derived_artifact_id: pass.derived_artifact_id ?? null,
       turns_processed: pass.meta?.turns_processed ?? null,
       mutations_count: pass.mutations.length,
       observations: pass.meta?.observations ?? null,
@@ -241,6 +380,63 @@ export function createStore(dbPath: string): Store {
     return db.prepare(`SELECT * FROM nodes ${where} ORDER BY key`).all(params) as Node[];
   }
 
+  const createWorkingSetSnapshotTx = db.transaction((
+    input: CreateWorkingSetSnapshotInput,
+    retention?: WorkingSetRetentionPolicy,
+  ): WorkingSetSnapshotTrace => {
+    const result = insertWorkingSetSnapshot.run({
+      session_id: input.sessionId ?? null,
+      query: input.query ?? null,
+      header_text: input.headerText,
+      header_tokens: input.headerTokens,
+      nodes_used: input.nodesUsed,
+    });
+
+    const snapshotId = Number(result.lastInsertRowid);
+    for (const item of input.items) {
+      insertWorkingSetSnapshotItem.run({
+        snapshot_id: snapshotId,
+        node_key: item.nodeKey,
+        pass_id: item.passId ?? null,
+        layer: item.layer,
+        category: item.category,
+        value: item.value,
+        score: item.score,
+        raw_score: item.rawScore,
+        reason: item.reason ?? null,
+      });
+    }
+
+    if (retention && retention.maxSnapshots >= 0) {
+      const rows = listWorkingSetSnapshotIdsForRetention.all(retention.maxSnapshots) as Array<{ id: number }>;
+      for (const row of rows) {
+        deleteWorkingSetSnapshotById.run(row.id);
+      }
+    }
+
+    const snapshot = mapWorkingSetSnapshot(getWorkingSetSnapshotById.get(snapshotId) as Record<string, unknown>)!;
+    const items = getWorkingSetSnapshotItemsById
+      .all(snapshotId)
+      .map((row) => mapWorkingSetSnapshotItem(row as Record<string, unknown>));
+    return { ...snapshot, items };
+  });
+
+  function getProvenanceForPass(passId: string): ProvenanceLink {
+    const pass = (getPassById.get(passId) as Pass | undefined) ?? null;
+    if (!pass) {
+      return { observation: null, artifact: null, pass: null };
+    }
+
+    const artifact = pass.derived_artifact_id
+      ? mapDerivedArtifact(getDerivedArtifactById.get(pass.derived_artifact_id) as Record<string, unknown>)
+      : null;
+    const observation = artifact?.observation_id
+      ? mapArchiveObservation(getArchiveObservationById.get(artifact.observation_id) as Record<string, unknown>)
+      : null;
+
+    return { observation, artifact, pass };
+  }
+
   function rebuild(): void {
     const rebuildTx = db.transaction(() => {
       db.exec('DELETE FROM nodes');
@@ -269,11 +465,78 @@ export function createStore(dbPath: string): Store {
   }
 
   return {
+    createArchiveObservation: (input: CreateArchiveObservationInput) => {
+      const result = insertArchiveObservation.run({
+        kind: input.kind,
+        source: input.source,
+        session_id: input.sessionId ?? null,
+        content: input.content,
+        metadata: serializeJson(input.metadata),
+      });
+      return mapArchiveObservation(
+        getArchiveObservationById.get(Number(result.lastInsertRowid)) as Record<string, unknown>
+      )!;
+    },
+    listArchiveObservations: (limit = 100) =>
+      listArchiveObservationRows
+        .all(limit)
+        .map((row) => mapArchiveObservation(row as Record<string, unknown>)!)
+        .filter(Boolean),
+    getArchiveObservation: (id: number) =>
+      mapArchiveObservation(getArchiveObservationById.get(id) as Record<string, unknown>),
+    createDerivedArtifact: (input: CreateDerivedArtifactInput) => {
+      const result = insertDerivedArtifact.run({
+        kind: input.kind,
+        observation_id: input.observationId ?? null,
+        content: input.content,
+        metadata: serializeJson(input.metadata),
+      });
+      return mapDerivedArtifact(
+        getDerivedArtifactById.get(Number(result.lastInsertRowid)) as Record<string, unknown>
+      )!;
+    },
+    listDerivedArtifacts: (limit = 100) =>
+      listDerivedArtifactRows
+        .all(limit)
+        .map((row) => mapDerivedArtifact(row as Record<string, unknown>)!)
+        .filter(Boolean),
+    getDerivedArtifact: (id: number) =>
+      mapDerivedArtifact(getDerivedArtifactById.get(id) as Record<string, unknown>),
     applyPass: (pass: ScribePass) => applyPassTx(pass),
     queryNodes,
     getNode: (key: string) => (getNodeByKey.get(key) as Node) ?? null,
     getHistory: (key: string) => getMutationsByKey.all(key) as Mutation[],
     listPasses: () => getAllPasses.all() as Pass[],
+    createWorkingSetSnapshot: (
+      input: CreateWorkingSetSnapshotInput,
+      retention?: WorkingSetRetentionPolicy,
+    ) => createWorkingSetSnapshotTx(input, retention),
+    listWorkingSetSnapshots: (limit = 50) =>
+      listWorkingSetSnapshotRows
+        .all(limit)
+        .map((row) => mapWorkingSetSnapshot(row as Record<string, unknown>)!)
+        .filter(Boolean),
+    getWorkingSetSnapshot: (id: number) => {
+      const snapshot = mapWorkingSetSnapshot(getWorkingSetSnapshotById.get(id) as Record<string, unknown>);
+      if (!snapshot) return null;
+      const items = getWorkingSetSnapshotItemsById
+        .all(id)
+        .map((row) => mapWorkingSetSnapshotItem(row as Record<string, unknown>));
+      return { ...snapshot, items };
+    },
+    getProvenanceForPass,
+    getProvenanceForWorkingSetSnapshot: (snapshotId: number) => {
+      const items = getWorkingSetSnapshotItemsById.all(snapshotId) as Array<Record<string, unknown>>;
+      const seenPasses = new Set<string>();
+      const links: ProvenanceLink[] = [];
+      for (const item of items) {
+        const passId = (item.pass_id as string | null) ?? null;
+        if (!passId || seenPasses.has(passId)) continue;
+        seenPasses.add(passId);
+        links.push(getProvenanceForPass(passId));
+      }
+      return links;
+    },
     rebuild,
     close: () => db.close(),
   };

@@ -4,7 +4,7 @@
 
 ---
 
-Memrok is an open-source plugin for [OpenClaw](https://github.com/openclaw/openclaw) that adds a graph-based memory **curation layer** on top of OpenClaw’s built-in recall and dreaming systems. It watches your conversations, learns what matters, and brings relevant context into every interaction — not just as raw recall, but as judged, structured memory.
+Memrok is an open-source plugin for [OpenClaw](https://github.com/openclaw/openclaw) that adds a graph-based memory **curation layer** on top of OpenClaw’s built-in recall and dreaming systems. It watches your conversations, archives raw observations, derives curation artifacts, and brings relevant context into every interaction as judged, structured memory rather than raw recall.
 
 ## Why Memrok?
 
@@ -36,13 +36,14 @@ All of this data stays on your device. Nothing leaves unless you choose a remote
 
 Memrok sits between your conversations and your agent's context window:
 
-1. **Watch** — Memrok reads session transcripts and ambient signals as they happen
-2. **Curate** — Two scribes process what they see:
+1. **Archive** — Memrok persists raw observations such as transcript chunks, bootstrap file contents, and reflection inputs
+2. **Derive** — Scribes process those observations into persisted derived artifacts:
    - A _transcript scribe_ extracts facts, preferences, and patterns in near-real-time
    - A _reflective scribe_ periodically steps back to find deeper insights and meta-patterns
-3. **Inject** — On every agent turn, Memrok assembles a memory header from its knowledge graph, scored for relevance, and prepends it to the conversation
+3. **Curate** — Derived artifacts update the memory graph, where supersession, expiry, and judged curation live
+4. **Inject** — On every agent turn, Memrok selects a typed working set from the graph, renders a header from that working set, and prepends it to the conversation
 
-The result: your agent starts each session already knowing what matters.
+The result: your agent starts each session already knowing what matters, with a cleaner provenance trail from raw observation to injected context.
 
 ## Quick Start
 
@@ -111,8 +112,8 @@ Memrok is a monorepo with clean separation of concerns:
 packages/
 ├── daemon/           → transcript watcher, scribe scheduler, consolidation engine
 ├── scribe/           → scribe protocol, system prompts, model interface
-├── store/            → SQLite + vector index + append-only mutation log
-├── injector/         → relevance scoring, token-budget-aware context assembly
+├── store/            → archive observations, derived artifacts, graph state, working-set traces
+├── injector/         → graph selection into typed working sets, then header rendering
 └── openclaw-plugin/  → OpenClaw context engine lifecycle (assemble/ingest/compact)
 ```
 

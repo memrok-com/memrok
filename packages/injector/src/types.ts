@@ -1,6 +1,7 @@
 export interface InjectorConfig {
   tokenBudget?: number;
   maxNodeChars?: number;
+  workingSetSnapshotLimit?: number;
   layerWeights?: {
     user?: number;
     agent?: number;
@@ -56,6 +57,38 @@ export interface ContextHeaderDebugNode {
   };
 }
 
+export interface WorkingSetItem {
+  key: string;
+  passId: string | null;
+  layer: 'user' | 'agent' | 'collaboration';
+  category: string;
+  value: string;
+  score: number;
+  rawScore: number;
+  updatedAt: string;
+  referenceCount: number;
+  correctionCount: number;
+  semanticScore: number;
+  queryCoverage: number;
+  keyTokenCoverage: number;
+  family: string;
+  domain: string | null;
+  domainMatch: boolean | null;
+  outOfContextRisk: number;
+  selectedBecause: string[];
+  scoreAdjustments: ContextHeaderDebugNode['scoreAdjustments'];
+}
+
+export interface WorkingSet {
+  query: string;
+  items: WorkingSetItem[];
+  layers: {
+    user: number;
+    agent: number;
+    collaboration: number;
+  };
+}
+
 export interface ContextHeader {
   text: string;
   tokens: number;
@@ -71,7 +104,9 @@ export interface ContextHeader {
 }
 
 export interface Injector {
-  assemble(context?: { recentMessages?: string }): ContextHeader;
+  selectWorkingSet(context?: { recentMessages?: string; sessionId?: string }): WorkingSet;
+  renderWorkingSet(workingSet: WorkingSet): ContextHeader;
+  assemble(context?: { recentMessages?: string; sessionId?: string }): ContextHeader;
   invalidate(): void;
   getWeights(): RelevanceWeights;
   setWeight(signal: string, value: number): void;

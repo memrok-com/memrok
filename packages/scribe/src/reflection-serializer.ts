@@ -1,4 +1,4 @@
-import type { Node, Pass, Store } from '@memrok/store';
+import type { GraphStore, Node, Pass } from '@memrok/store';
 
 export interface ReflectionSerializerOptions {
   /** Include nodes updated within last N days. Default: 30 */
@@ -56,7 +56,7 @@ interface CurationSignal {
   newerRelatedKeys: string[];
 }
 
-function computeCurationSignal(node: Node, allNodes: Node[], store: Store): CurationSignal {
+function computeCurationSignal(node: Node, allNodes: Node[], store: GraphStore): CurationSignal {
   let score = 0;
   const reasons: string[] = [];
 
@@ -171,7 +171,7 @@ function compareReflectionPriority(a: Node, b: Node): number {
  * user message to ScribeInterface.callModel() with inputLabel "GRAPH_STATE".
  */
 export function serializeGraphForReflection(
-  store: Store,
+  store: GraphStore,
   options?: ReflectionSerializerOptions,
 ): string {
   const recentDays = options?.recentDays ?? 30;

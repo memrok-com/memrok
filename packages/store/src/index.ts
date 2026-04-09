@@ -1,6 +1,13 @@
 export { createStore } from './store.js';
 export type {
+  ArchiveStore,
+  ArtifactStore,
+  GraphStore,
   Store,
+  ArchiveObservation,
+  CreateArchiveObservationInput,
+  DerivedArtifact,
+  CreateDerivedArtifactInput,
   ScribePass,
   MutationInput,
   MutationSignals,
@@ -9,4 +16,11 @@ export type {
   Pass,
   NodeFilter,
   ApplyResult,
+  WorkingSetSnapshot,
+  WorkingSetSnapshotItem,
+  WorkingSetSnapshotTrace,
+  WorkingSetStore,
+  CreateWorkingSetSnapshotInput,
+  WorkingSetRetentionPolicy,
+  ProvenanceLink,
 } from './types.js';

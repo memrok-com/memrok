@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS passes (
     timestamp   TEXT NOT NULL DEFAULT (datetime('now')),
     source      TEXT,
     model       TEXT,
+    derived_artifact_id INTEGER,
     turns_processed INTEGER,
     mutations_count INTEGER,
     observations TEXT,
@@ -92,6 +93,80 @@ CREATE TABLE IF NOT EXISTS config (
 );
 `;
 
+const SCHEMA_V2 = `
+CREATE TABLE IF NOT EXISTS archive_observations (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    session_id  TEXT,
+    content     TEXT NOT NULL,
+    metadata    TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_archive_observations_kind ON archive_observations(kind);
+CREATE INDEX IF NOT EXISTS idx_archive_observations_source ON archive_observations(source);
+CREATE INDEX IF NOT EXISTS idx_archive_observations_created_at ON archive_observations(created_at);
+
+CREATE TABLE IF NOT EXISTS derived_artifacts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind            TEXT NOT NULL,
+    observation_id  INTEGER,
+    content         TEXT NOT NULL,
+    metadata        TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (observation_id) REFERENCES archive_observations(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_derived_artifacts_kind ON derived_artifacts(kind);
+CREATE INDEX IF NOT EXISTS idx_derived_artifacts_observation_id ON derived_artifacts(observation_id);
+CREATE INDEX IF NOT EXISTS idx_derived_artifacts_created_at ON derived_artifacts(created_at);
+
+CREATE TABLE IF NOT EXISTS working_set_snapshots (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id    TEXT,
+    query         TEXT,
+    header_text   TEXT NOT NULL,
+    header_tokens INTEGER NOT NULL,
+    nodes_used    INTEGER NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_working_set_snapshots_created_at ON working_set_snapshots(created_at);
+CREATE INDEX IF NOT EXISTS idx_working_set_snapshots_session_id ON working_set_snapshots(session_id);
+
+CREATE TABLE IF NOT EXISTS working_set_snapshot_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id INTEGER NOT NULL,
+    node_key    TEXT NOT NULL,
+    pass_id     TEXT,
+    layer       TEXT NOT NULL,
+    category    TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    score       REAL NOT NULL,
+    raw_score   REAL NOT NULL,
+    reason      TEXT,
+    FOREIGN KEY (snapshot_id) REFERENCES working_set_snapshots(id) ON DELETE CASCADE,
+    FOREIGN KEY (pass_id) REFERENCES passes(pass_id) ON DELETE SET NULL,
+    CHECK (layer IN ('user', 'agent', 'collaboration'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_snapshot_id ON working_set_snapshot_items(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_pass_id ON working_set_snapshot_items(pass_id);
+`;
+
+function getCurrentVersion(db: Database.Database): number {
+  const row = db.prepare(
+    'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1'
+  ).get() as { version?: number } | undefined;
+  return row?.version ?? 1;
+}
+
+function columnExists(db: Database.Database, table: string, column: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return rows.some((row) => row.name === column);
+}
+
 export function initSchema(db: Database.Database): void {
   const hasVersionTable = db.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
@@ -101,6 +176,22 @@ export function initSchema(db: Database.Database): void {
     db.exec(SCHEMA_V1);
     db.prepare(
       'INSERT INTO schema_version (version, description) VALUES (?, ?)'
-    ).run(CURRENT_VERSION, 'Initial schema');
+    ).run(1, 'Initial schema');
+    db.exec(SCHEMA_V2);
+    db.prepare(
+      'INSERT INTO schema_version (version, description) VALUES (?, ?)'
+    ).run(CURRENT_VERSION, 'Archive observations, derived artifacts, and working set traces');
+    return;
+  }
+
+  const currentVersion = getCurrentVersion(db);
+  if (currentVersion < 2) {
+    if (!columnExists(db, 'passes', 'derived_artifact_id')) {
+      db.exec('ALTER TABLE passes ADD COLUMN derived_artifact_id INTEGER');
+    }
+    db.exec(SCHEMA_V2);
+    db.prepare(
+      'INSERT INTO schema_version (version, description) VALUES (?, ?)'
+    ).run(2, 'Archive observations, derived artifacts, and working set traces');
   }
 }

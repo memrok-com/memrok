@@ -1,7 +1,9 @@
-import type { Store, Node } from '@memrok/store';
+import type { GraphStore, Node, WorkingSetStore } from '@memrok/store';
 import type {
   InjectorConfig,
   RelevanceWeights,
+  WorkingSet,
+  WorkingSetItem,
   ContextHeader,
   ContextHeaderDebugNode,
   Injector,
@@ -11,6 +13,7 @@ const DEFAULT_TOKEN_BUDGET = 2000;
 const DEFAULT_MAX_NODE_CHARS = 150;
 const DEFAULT_MAX_AGE = 90;
 const DEFAULT_CACHE_MAX_AGE = 30000;
+const DEFAULT_WORKING_SET_SNAPSHOT_LIMIT = 50;
 
 const DEFAULT_LAYER_WEIGHTS = { user: 0.5, agent: 0.25, collaboration: 0.25 };
 const DEFAULT_RELEVANCE_WEIGHTS: RelevanceWeights = {
@@ -371,13 +374,15 @@ interface ScoredCandidate {
 }
 
 export function createInjector(
-  store: Store,
+  store: GraphStore & WorkingSetStore,
   config?: InjectorConfig
 ): Injector {
   const tokenBudget = config?.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
   const maxNodeChars = config?.maxNodeChars ?? DEFAULT_MAX_NODE_CHARS;
   const maxAge = config?.maxAge ?? DEFAULT_MAX_AGE;
   const cacheMaxAge = config?.cacheMaxAge ?? DEFAULT_CACHE_MAX_AGE;
+  const workingSetSnapshotLimit =
+    config?.workingSetSnapshotLimit ?? DEFAULT_WORKING_SET_SNAPSHOT_LIMIT;
 
   const layerWeights = {
     user: config?.layerWeights?.user ?? DEFAULT_LAYER_WEIGHTS.user,
@@ -406,15 +411,8 @@ export function createInjector(
   let cache: { header: ContextHeader; timestamp: number } | null = null;
   let kwCache: KeywordCache | null = null;
 
-  function assemble(context?: { recentMessages?: string }): ContextHeader {
+  function selectWorkingSet(context?: { recentMessages?: string; sessionId?: string }): WorkingSet {
     const recentMessages = context?.recentMessages ?? '';
-
-    // Header cache is only valid for context-free calls (no recentMessages)
-    if (!recentMessages && cache && Date.now() - cache.timestamp < cacheMaxAge) {
-      return { ...cache.header, cachedAt: cache.timestamp };
-    }
-
-    const start = performance.now();
     const nodes = store.queryNodes({ active: true });
 
     // Build/refresh keyword cache (independent of query, invalidated with store)
@@ -550,8 +548,7 @@ export function createInjector(
     const prefixTokens = estimateTokens(headerPrefix);
     const remainingBudget = tokenBudget - prefixTokens;
 
-    const sections: string[] = [];
-    const debugNodes: ContextHeaderDebugNode[] = [];
+    const workingSetItems: WorkingSetItem[] = [];
     const selectedValues: string[] = [];
     const selectedFamilies = new Map<string, number>();
     const selectedDomains = new Map<string, number>();
@@ -561,7 +558,6 @@ export function createInjector(
       agent: 0,
       collaboration: 0,
     };
-    let totalNodesUsed = 0;
 
     for (const layer of ['user', 'agent', 'collaboration'] as LayerName[]) {
       const budget = Math.floor(remainingBudget * layerWeights[layer]);
@@ -570,7 +566,6 @@ export function createInjector(
 
       const sectionHeader = `\n### ${LAYER_TITLES[layer]}\n`;
       let sectionTokens = estimateTokens(sectionHeader);
-      const lines: string[] = [];
 
       const remaining = [...entries];
       while (remaining.length > 0) {
@@ -613,7 +608,6 @@ export function createInjector(
         const line = `- ${truncateValue(node.value, maxNodeChars)}\n`;
         const lineTokens = estimateTokens(line);
         if (sectionTokens + lineTokens > budget) break;
-        lines.push(line);
         selectedValues.push(node.value);
         const family = selected.family;
         selectedFamilies.set(family, (selectedFamilies.get(family) ?? 0) + 1);
@@ -636,8 +630,9 @@ export function createInjector(
           domain && domainFocus && domain !== domainFocus
             ? Math.max(0, ((selectedDomains.get(domain) ?? 1) - 1) * 0.08)
             : 0;
-        debugNodes.push({
+        workingSetItems.push({
           key: node.key,
+          passId: node.last_pass_id ?? null,
           layer,
           category: node.category,
           value: node.value,
@@ -663,26 +658,97 @@ export function createInjector(
         });
         sectionTokens += lineTokens;
         layerCounts[layer]++;
-        totalNodesUsed++;
-      }
-
-      if (lines.length > 0) {
-        sections.push(sectionHeader + lines.join(''));
       }
     }
 
-    const text =
-      totalNodesUsed > 0 ? headerPrefix + sections.join('') : '';
-    const assemblyMs = performance.now() - start;
+    return {
+      query: recentMessages,
+      items: workingSetItems,
+      layers: layerCounts,
+    };
+  }
 
-    const header: ContextHeader = {
+  function renderWorkingSet(workingSet: WorkingSet): ContextHeader {
+    const start = performance.now();
+    const sections: string[] = [];
+    const debugNodes: ContextHeaderDebugNode[] = [];
+
+    for (const layer of ['user', 'agent', 'collaboration'] as LayerName[]) {
+      const items = workingSet.items.filter((item) => item.layer === layer);
+      if (items.length === 0) continue;
+      const sectionHeader = `\n### ${LAYER_TITLES[layer]}\n`;
+      const lines = items.map((item) => `- ${truncateValue(item.value, maxNodeChars)}\n`);
+      sections.push(sectionHeader + lines.join(''));
+      debugNodes.push(
+        ...items.map((item) => ({
+          key: item.key,
+          layer: item.layer,
+          category: item.category,
+          value: item.value,
+          score: item.score,
+          rawScore: item.rawScore,
+          updatedAt: item.updatedAt,
+          referenceCount: item.referenceCount,
+          correctionCount: item.correctionCount,
+          semanticScore: item.semanticScore,
+          queryCoverage: item.queryCoverage,
+          keyTokenCoverage: item.keyTokenCoverage,
+          family: item.family,
+          domain: item.domain,
+          domainMatch: item.domainMatch,
+          outOfContextRisk: item.outOfContextRisk,
+          selectedBecause: item.selectedBecause,
+          scoreAdjustments: item.scoreAdjustments,
+        }))
+      );
+    }
+
+    const text =
+      workingSet.items.length > 0
+        ? '## Memory Context (Memrok)\n' + HEADER_PREAMBLE + sections.join('')
+        : '';
+
+    return {
       text,
       tokens: estimateTokens(text),
-      nodesUsed: totalNodesUsed,
-      layers: layerCounts,
+      nodesUsed: workingSet.items.length,
+      layers: workingSet.layers,
       debugNodes,
-      assemblyMs,
+      assemblyMs: performance.now() - start,
     };
+  }
+
+  function assemble(context?: { recentMessages?: string; sessionId?: string }): ContextHeader {
+    const recentMessages = context?.recentMessages ?? '';
+
+    // Header cache is only valid for context-free calls (no recentMessages)
+    if (!recentMessages && cache && Date.now() - cache.timestamp < cacheMaxAge) {
+      return { ...cache.header, cachedAt: cache.timestamp };
+    }
+
+    const workingSet = selectWorkingSet(context);
+    const header = renderWorkingSet(workingSet);
+
+    store.createWorkingSetSnapshot(
+      {
+        sessionId: context?.sessionId,
+        query: workingSet.query || undefined,
+        headerText: header.text,
+        headerTokens: header.tokens,
+        nodesUsed: header.nodesUsed,
+        items: workingSet.items.map((item) => ({
+          nodeKey: item.key,
+          passId: item.passId,
+          layer: item.layer,
+          category: item.category,
+          value: item.value,
+          score: item.score,
+          rawScore: item.rawScore,
+          reason: item.selectedBecause.join(', '),
+        })),
+      },
+      { maxSnapshots: workingSetSnapshotLimit },
+    );
 
     // Only cache context-free results (semantic results vary per conversation)
     if (!recentMessages) {
@@ -708,5 +774,5 @@ export function createInjector(
     }
   }
 
-  return { assemble, invalidate, getWeights, setWeight };
+  return { selectWorkingSet, renderWorkingSet, assemble, invalidate, getWeights, setWeight };
 }

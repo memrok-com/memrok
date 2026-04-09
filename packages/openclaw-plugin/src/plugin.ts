@@ -5,7 +5,7 @@ import { createStore } from '@memrok/store';
 import { createInjector } from '@memrok/injector';
 import { ScribeInterface, REFLECTION_SYSTEM_PROMPT, serializeGraphForReflection, type ModelCaller } from '@memrok/scribe';
 import { TranscriptWatcher, ConsolidationEngine, StatusTracker } from '@memrok/daemon';
-import type { Store } from '@memrok/store';
+import type { ArchiveStore, ArtifactStore, GraphStore, Store } from '@memrok/store';
 import type { Injector } from '@memrok/injector';
 import type {
   AssembleParams,
@@ -139,6 +139,35 @@ function collectText(payloads: Array<{ isError?: boolean; text?: string }>): str
     .trim();
 }
 
+function persistObservationDrivenPass(params: {
+  store: ArchiveStore & ArtifactStore & GraphStore;
+  observation: {
+    kind: string;
+    source: string;
+    sessionId?: string;
+    content: string;
+    metadata?: Record<string, unknown>;
+  };
+  artifact: {
+    kind: string;
+    content: string;
+    metadata?: Record<string, unknown>;
+  };
+  pass: ReturnType<ScribeInterface['parseResponse']>;
+  source: string;
+}) {
+  const observation = params.store.createArchiveObservation(params.observation);
+  const artifact = params.store.createDerivedArtifact({
+    kind: params.artifact.kind,
+    observationId: observation.id,
+    content: params.artifact.content,
+    metadata: params.artifact.metadata,
+  });
+  params.pass.source = params.source;
+  params.pass.derived_artifact_id = artifact.id;
+  return params.store.applyPass(params.pass);
+}
+
 export function createModelCaller(api: PluginApi, config: ResolvedConfig, inputLabel?: string): ModelCaller {
   return async (systemPrompt: string, userMessage: string): Promise<string> => {
     const runAgent = api.runtime?.agent?.runEmbeddedPiAgent;
@@ -219,7 +248,7 @@ function scanMarkdownFiles(dir: string): string[] {
 }
 
 export async function runBootstrap(
-  store: Store,
+  store: ArchiveStore & ArtifactStore & GraphStore,
   scribe: ScribeInterface,
   bootstrapConfig: ResolvedBootstrapConfig,
   workspaceDir: string,
@@ -304,8 +333,22 @@ export async function runBootstrap(
     // Run through scribe
     try {
       const pass = await scribe.callModel(content);
-      pass.source = `bootstrap:${fileKey}`;
-      const result = store.applyPass(pass);
+      const result = persistObservationDrivenPass({
+        store,
+        observation: {
+          kind: 'bootstrap-file',
+          source: fileKey,
+          content,
+          metadata: { filePath },
+        },
+        artifact: {
+          kind: 'scribe-pass-output',
+          content: JSON.stringify(pass),
+          metadata: { stage: 'bootstrap' },
+        },
+        pass,
+        source: `bootstrap:${fileKey}`,
+      });
       console.log(
         `[memrok:bootstrap] ${fileKey}: ${pass.mutations.length} mutations (${result.nodes_created} created, ${result.nodes_updated} updated)`,
       );
@@ -326,7 +369,7 @@ export async function runBootstrap(
 }
 
 export interface PluginRuntimeState {
-  store: Store;
+  store: GraphStore;
   injector: Injector;
   watcher: TranscriptWatcher;
   consolidation: ConsolidationEngine;
@@ -341,6 +384,7 @@ export function createContextEngine(runtime: PluginRuntimeState): ContextEngine 
     },
     async assemble(params) {
       const header = runtime.injector.assemble({
+        sessionId: params.sessionId,
         recentMessages: recentContextFromMessages(params.messages),
       });
       return {
@@ -379,7 +423,7 @@ export function shouldRunReflection(
 type ReflectionStage = 'serialize-graph' | 'call-model' | 'apply-pass';
 
 export async function runReflectionPass(params: {
-  store: Store;
+  store: ArchiveStore & ArtifactStore & GraphStore;
   reflectionScribe: ScribeInterface;
   injector: Pick<Injector, 'invalidate'>;
   status: StatusTracker;
@@ -389,11 +433,22 @@ export async function runReflectionPass(params: {
 
   try {
     graphState = serializeGraphForReflection(params.store);
+    const observation = params.store.createArchiveObservation({
+      kind: 'reflection-input',
+      source: 'reflection',
+      content: graphState,
+    });
     params.status.recordReflectiveScribeAttempt(Buffer.byteLength(graphState, 'utf8'));
 
     stage = 'call-model';
     const pass = await params.reflectionScribe.callModel(graphState);
     pass.source = 'reflection';
+    const artifact = params.store.createDerivedArtifact({
+      kind: 'reflection-output',
+      observationId: observation.id,
+      content: JSON.stringify(pass),
+    });
+    pass.derived_artifact_id = artifact.id;
 
     stage = 'apply-pass';
     params.store.applyPass(pass);
@@ -483,7 +538,22 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     const transcript = pendingTranscriptChunks.join('\n');
     try {
       const pass = await scribe.callModel(transcript);
-      store.applyPass(pass);
+      persistObservationDrivenPass({
+        store,
+        observation: {
+          kind: 'transcript',
+          source: lastSourceProcessed ?? 'transcript',
+          content: transcript,
+          metadata: { chunkCount: pendingTranscriptChunks.length },
+        },
+        artifact: {
+          kind: 'scribe-pass-output',
+          content: JSON.stringify(pass),
+          metadata: { stage: 'transcript-scribe' },
+        },
+        pass,
+        source: lastSourceProcessed ?? 'transcript',
+      });
       pendingTranscriptChunks.length = 0;
       injector.invalidate();
       passesSinceReflection++;
@@ -520,8 +590,8 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
 
       watcher.start();
       consolidation.startLoop();
-      reflectionCheckTimer = setInterval(() => {
-        void checkAndRunReflection();
+      reflectionCheckTimer = setInterval(async () => {
+        await checkAndRunReflection();
       }, DEFAULT_REFLECTION_CHECK_INTERVAL_MS);
       await checkAndRunReflection();
 

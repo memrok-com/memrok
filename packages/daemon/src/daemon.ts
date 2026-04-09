@@ -1,6 +1,6 @@
 import { createStore } from '@memrok/store';
 import { createInjector } from '@memrok/injector';
-import type { Store } from '@memrok/store';
+import type { ArchiveStore, ArtifactStore, GraphStore, Store } from '@memrok/store';
 import type { Injector } from '@memrok/injector';
 import type { Server } from 'node:http';
 import type { DaemonConfig, DaemonStatus, MemrokDaemon } from './types.js';
@@ -10,11 +10,40 @@ import { ScribeInterface } from './scribe.js';
 import { createApiServer } from './api.js';
 import { StatusTracker } from './status.js';
 
-function updateNodeLifecycleStatus(status: StatusTracker, store: Store): void {
+function updateNodeLifecycleStatus(status: StatusTracker, store: GraphStore): void {
   status.setNodeLifecycleCounts(
     store.queryNodes({ active: true }).length,
     store.queryNodes({ active: false }).length,
   );
+}
+
+function persistObservationDrivenPass(params: {
+  store: ArchiveStore & ArtifactStore & GraphStore;
+  observation: {
+    kind: string;
+    source: string;
+    sessionId?: string;
+    content: string;
+    metadata?: Record<string, unknown>;
+  };
+  artifact: {
+    kind: string;
+    content: string;
+    metadata?: Record<string, unknown>;
+  };
+  pass: Awaited<ReturnType<ScribeInterface['callModel']>>;
+  source: string;
+}) {
+  const observation = params.store.createArchiveObservation(params.observation);
+  const artifact = params.store.createDerivedArtifact({
+    kind: params.artifact.kind,
+    observationId: observation.id,
+    content: params.artifact.content,
+    metadata: params.artifact.metadata,
+  });
+  params.pass.source = params.source;
+  params.pass.derived_artifact_id = artifact.id;
+  return params.store.applyPass(params.pass);
 }
 
 export function createDaemon(config: DaemonConfig): MemrokDaemon {
@@ -52,7 +81,22 @@ export function createDaemon(config: DaemonConfig): MemrokDaemon {
       const pass = await scribe.callModel(transcript);
 
       // 3. Apply the resulting pass to the store
-      store.applyPass(pass);
+      persistObservationDrivenPass({
+        store,
+        observation: {
+          kind: 'transcript',
+          source: lastSourceProcessed ?? 'transcript',
+          content: transcript,
+          metadata: { chunkCount: pendingTranscriptChunks.length },
+        },
+        artifact: {
+          kind: 'scribe-pass-output',
+          content: JSON.stringify(pass),
+          metadata: { stage: 'transcript-scribe' },
+        },
+        pass,
+        source: lastSourceProcessed ?? 'transcript',
+      });
 
       // 4. Only clear chunks after both succeed — on failure, chunks are preserved for retry
       pendingTranscriptChunks.length = 0;

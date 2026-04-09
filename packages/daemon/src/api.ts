@@ -1,11 +1,11 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { Store, Node } from '@memrok/store';
+import type { GraphStore, Node } from '@memrok/store';
 import type { Injector, RelevanceWeights } from '@memrok/injector';
 import type { ApiConfig, DaemonStatus } from './types.js';
 import type { ConsolidationEngine } from './consolidation.js';
 
 interface ApiDeps {
-  store: Store;
+  store: GraphStore;
   injector: Injector;
   consolidation: ConsolidationEngine;
   getStatus: () => DaemonStatus;

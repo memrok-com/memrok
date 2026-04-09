@@ -1,11 +1,11 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
-import type { Store, ApplyResult } from '@memrok/store';
+import type { ArchiveStore, ArtifactStore, GraphStore, ApplyResult } from '@memrok/store';
 import { ScribeInterface } from './scribe.js';
 import type { ScribeConfig } from './types.js';
 
 export interface BootstrapOptions {
-  store: Store;
+  store: ArchiveStore & ArtifactStore & GraphStore;
   scribeConfig: ScribeConfig;
   files?: string[];
   memoryDir?: string;
@@ -105,9 +105,22 @@ export async function bootstrap(options: BootstrapOptions): Promise<BootstrapRes
     // Run through scribe
     try {
       const pass = await scribe.callModel(content);
+      const observation = store.createArchiveObservation({
+        kind: 'bootstrap-file',
+        source: fileName,
+        content,
+        metadata: { filePath },
+      });
+      const artifact = store.createDerivedArtifact({
+        kind: 'scribe-pass-output',
+        observationId: observation.id,
+        content: JSON.stringify(pass),
+        metadata: { stage: 'bootstrap' },
+      });
 
       // Tag the pass source for provenance
       pass.source = `bootstrap:${fileName}`;
+      pass.derived_artifact_id = artifact.id;
 
       // Apply mutations to store
       const applyResult = store.applyPass(pass);

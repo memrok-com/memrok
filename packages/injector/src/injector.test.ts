@@ -37,6 +37,15 @@ describe('injector', () => {
       assert.equal(header.cachedAt, undefined);
       assert.ok(header.assemblyMs >= 0);
     });
+
+    it('returns an explicit empty working set for empty store', () => {
+      const injector = createInjector(store);
+      const workingSet = injector.selectWorkingSet();
+      assert.equal(workingSet.items.length, 0);
+      assert.equal(workingSet.layers.user, 0);
+      assert.equal(workingSet.layers.agent, 0);
+      assert.equal(workingSet.layers.collaboration, 0);
+    });
   });
 
   describe('assembly from populated store', () => {
@@ -87,6 +96,34 @@ describe('injector', () => {
       assert.equal(header.layers.agent, 1);
       assert.equal(header.layers.collaboration, 1);
       assert.ok(header.tokens > 0);
+    });
+
+    it('renders headers only from typed working sets', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-ws',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/pref/debug',
+              value: 'Keep working set explicit.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store);
+      const workingSet = injector.selectWorkingSet({
+        recentMessages: 'working set debugging',
+        sessionId: 'session-1',
+      });
+      const header = injector.renderWorkingSet(workingSet);
+
+      assert.equal(workingSet.items.length, 1);
+      assert.equal(workingSet.items[0].key, 'user/pref/debug');
+      assert.ok(header.text.includes('Keep working set explicit.'));
     });
 
     it('suppresses near-duplicate node values across the header', () => {
@@ -549,6 +586,38 @@ describe('injector', () => {
 
       assert.ok(selectedKeys.includes('user/priomind/pricing/value'), 'Distinct pricing family should survive judged selection');
       assert.ok(landingKeys.length <= 2, 'Selection should avoid overpacking one landing family cluster');
+    });
+  });
+
+  describe('working set traces', () => {
+    it('persists working set snapshots with pass provenance', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'trace-pass',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/trace',
+              value: 'Trace this working set selection.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, { workingSetSnapshotLimit: 5 });
+      injector.assemble({ recentMessages: 'trace this selection', sessionId: 'session-trace' });
+
+      const snapshots = store.listWorkingSetSnapshots();
+      assert.equal(snapshots.length, 1);
+
+      const snapshot = store.getWorkingSetSnapshot(snapshots[0].id);
+      assert.ok(snapshot);
+      assert.equal(snapshot.session_id, 'session-trace');
+      assert.equal(snapshot.items.length, 1);
+      assert.equal(snapshot.items[0].node_key, 'user/trace');
+      assert.equal(snapshot.items[0].pass_id, 'trace-pass');
     });
   });
 
