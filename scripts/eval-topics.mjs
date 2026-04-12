@@ -61,6 +61,9 @@ let tokenBudget = 1000;
 let recentLimit = 12;
 let asJson = false;
 let compare = true;
+let noPersist = false;
+let includeHeaders = false;
+let outputPath = null;
 const topics = [];
 
 for (let i = 0; i < args.length; i++) {
@@ -71,6 +74,9 @@ for (let i = 0; i < args.length; i++) {
   else if (arg === '--recent-limit' && args[i + 1]) recentLimit = Number(args[++i]);
   else if (arg === '--json') asJson = true;
   else if (arg === '--no-compare') compare = false;
+  else if (arg === '--dry-run' || arg === '--no-persist') noPersist = true;
+  else if (arg === '--headers' || arg === '--full-header') includeHeaders = true;
+  else if (arg === '--out' && args[i + 1]) outputPath = args[++i];
   else topics.push(arg);
 }
 
@@ -145,6 +151,7 @@ function summarizeTopic(topicId, sessionFile, header, recentMessages) {
     topicId,
     session: sessionFile ? path.basename(sessionFile) : null,
     recentMessages,
+    headerText: header.text,
     tokens: header.tokens,
     nodesUsed: header.nodesUsed,
     layers: header.layers,
@@ -177,6 +184,14 @@ function summarizeTopic(topicId, sessionFile, header, recentMessages) {
     })),
     selectedKeys,
   };
+}
+
+function emit(text) {
+  if (outputPath) {
+    fs.writeFileSync(outputPath, text);
+    return;
+  }
+  process.stdout.write(text);
 }
 
 function compareTopics(topicSummaries) {
@@ -220,7 +235,7 @@ for (const topic of selectedTopics) {
   }
 
   const recentMessages = extractRecentMessages(sessionFile, recentLimit);
-  const header = injector.assemble({ recentMessages });
+  const header = injector.assemble({ recentMessages, noPersist });
   topicSummaries.push(summarizeTopic(topic, sessionFile, header, recentMessages));
 }
 
@@ -228,54 +243,63 @@ const output = {
   dbPath,
   sessionsDir,
   tokenBudget,
+  noPersist,
   topics: topicSummaries,
   comparisons: compare ? compareTopics(topicSummaries.filter((topic) => !topic.error)) : [],
 };
 
 if (asJson) {
-  console.log(JSON.stringify(output, null, 2));
+  emit(`${JSON.stringify(output, null, 2)}\n`);
   store.close();
   process.exit(0);
 }
 
-console.log('## Memrok Topic Eval');
-console.log(`dbPath: ${dbPath}`);
-console.log(`sessionsDir: ${sessionsDir}`);
-console.log(`tokenBudget: ${tokenBudget}`);
+const lines = [];
+lines.push('## Memrok Topic Eval');
+lines.push(`dbPath: ${dbPath}`);
+lines.push(`sessionsDir: ${sessionsDir}`);
+lines.push(`tokenBudget: ${tokenBudget}`);
+lines.push(`noPersist: ${noPersist}`);
 
 for (const topic of topicSummaries) {
-  console.log(`\n## Topic ${topic.topicId}`);
+  lines.push(`\n## Topic ${topic.topicId}`);
   if (topic.error) {
-    console.log(topic.error);
+    lines.push(topic.error);
     continue;
   }
-  console.log(`session: ${topic.session}`);
-  console.log(`domainFocus: ${topic.domainFocus ?? 'none'}`);
-  console.log(`tokens=${topic.tokens} nodesUsed=${topic.nodesUsed}`);
-  console.log(
+  lines.push(`session: ${topic.session}`);
+  lines.push(`domainFocus: ${topic.domainFocus ?? 'none'}`);
+  lines.push(`tokens=${topic.tokens} nodesUsed=${topic.nodesUsed}`);
+  lines.push(
     `relevanceHitRate=${topic.relevanceHitRate.toFixed(2)} outOfContext=${topic.outOfContextCount} ` +
     `bleed=${topic.crossDomainBleedCount} dominantFamily=${topic.dominantFamily.family ?? 'none'}:${topic.dominantFamily.count} ` +
     `share=${topic.dominantFamily.share.toFixed(2)}`
   );
-  console.log(`domains=${JSON.stringify(topic.selectedDomains)}`);
-  console.log(`categories=${JSON.stringify(topic.categories)}`);
-  console.log(`attribution=${JSON.stringify(topic.attributionCounts)}`);
-  console.log('top nodes:');
+  lines.push(`domains=${JSON.stringify(topic.selectedDomains)}`);
+  lines.push(`categories=${JSON.stringify(topic.categories)}`);
+  lines.push(`attribution=${JSON.stringify(topic.attributionCounts)}`);
+  lines.push('top nodes:');
   for (const node of topic.topNodes) {
-    console.log(
+    lines.push(
       `- [${node.layer}/${node.category}] score=${node.score.toFixed(3)} raw=${node.rawScore.toFixed(3)} ` +
       `semantic=${node.semanticScore.toFixed(3)} coverage=${node.queryCoverage.toFixed(3)} risk=${node.outOfContextRisk.toFixed(3)}`
     );
-    console.log(`  key=${node.key} family=${node.family} domain=${node.domain ?? 'none'} because=${(node.selectedBecause ?? []).join(', ') || 'baseline relevance'}`);
-    console.log(`  ${node.value}`);
+    lines.push(`  key=${node.key} family=${node.family} domain=${node.domain ?? 'none'} because=${(node.selectedBecause ?? []).join(', ') || 'baseline relevance'}`);
+    lines.push(`  ${node.value}`);
+  }
+  if (includeHeaders) {
+    lines.push('full header:');
+    lines.push(topic.headerText || '(empty)');
   }
 }
 
 if (compare) {
-  console.log('\n## Cross-Topic Overlap');
+  lines.push('\n## Cross-Topic Overlap');
   for (const row of output.comparisons.slice(0, 10)) {
-    console.log(`- ${row.leftTopic} vs ${row.rightTopic}: overlap=${row.overlapCount} rate=${row.overlapRate.toFixed(2)}`);
+    lines.push(`- ${row.leftTopic} vs ${row.rightTopic}: overlap=${row.overlapCount} rate=${row.overlapRate.toFixed(2)}`);
   }
 }
+
+emit(`${lines.join('\n')}\n`);
 
 store.close();

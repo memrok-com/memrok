@@ -726,6 +726,33 @@ describe('injector', () => {
       assert.equal(snapshot.items[0].pass_id, 'trace-pass');
       assert.equal(snapshot.items[0].mutation_id, latestMutationId);
     });
+
+    it('skips working set snapshot persistence in no-persist mode', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'trace-pass-no-persist',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/trace/no-persist',
+              value: 'Inspect this header without persisting a trace.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, { workingSetSnapshotLimit: 5 });
+      const header = injector.assemble({
+        recentMessages: 'inspect without persisting',
+        sessionId: 'session-no-persist',
+        noPersist: true,
+      });
+
+      assert.ok(header.text.includes('Inspect this header without persisting a trace.'));
+      assert.equal(store.listWorkingSetSnapshots().length, 0);
+    });
   });
 
   describe('token budget enforcement', () => {

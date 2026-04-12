@@ -932,7 +932,7 @@ export function createInjector(
     };
   }
 
-  function assemble(context?: { recentMessages?: string; sessionId?: string }): ContextHeader {
+  function assemble(context?: { recentMessages?: string; sessionId?: string; noPersist?: boolean }): ContextHeader {
     const recentMessages = context?.recentMessages ?? '';
 
     // Header cache is only valid for context-free calls (no recentMessages)
@@ -943,27 +943,29 @@ export function createInjector(
     const workingSet = selectWorkingSet(context);
     const header = renderWorkingSet(workingSet);
 
-    store.createWorkingSetSnapshot(
-      {
-        sessionId: context?.sessionId,
-        query: workingSet.query || undefined,
-        headerText: header.text,
-        headerTokens: header.tokens,
-        nodesUsed: header.nodesUsed,
-        items: workingSet.items.map((item) => ({
-          nodeKey: item.key,
-          passId: item.passId,
-          mutationId: item.mutationId,
-          layer: item.layer,
-          category: item.category,
-          value: item.value,
-          score: item.score,
-          rawScore: item.rawScore,
-          reason: item.selectedBecause.join(', '),
-        })),
-      },
-      { maxSnapshots: workingSetSnapshotLimit },
-    );
+    if (!context?.noPersist) {
+      store.createWorkingSetSnapshot(
+        {
+          sessionId: context?.sessionId,
+          query: workingSet.query || undefined,
+          headerText: header.text,
+          headerTokens: header.tokens,
+          nodesUsed: header.nodesUsed,
+          items: workingSet.items.map((item) => ({
+            nodeKey: item.key,
+            passId: item.passId,
+            mutationId: item.mutationId,
+            layer: item.layer,
+            category: item.category,
+            value: item.value,
+            score: item.score,
+            rawScore: item.rawScore,
+            reason: item.selectedBecause.join(', '),
+          })),
+        },
+        { maxSnapshots: workingSetSnapshotLimit },
+      );
+    }
 
     // Only cache context-free results (semantic results vary per conversation)
     if (!recentMessages) {

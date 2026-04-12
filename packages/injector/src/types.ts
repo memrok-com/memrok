@@ -110,10 +110,16 @@ export interface ContextHeader {
   assemblyMs: number;
 }
 
+export interface AssembleContext {
+  recentMessages?: string;
+  sessionId?: string;
+  noPersist?: boolean;
+}
+
 export interface Injector {
-  selectWorkingSet(context?: { recentMessages?: string; sessionId?: string }): WorkingSet;
+  selectWorkingSet(context?: AssembleContext): WorkingSet;
   renderWorkingSet(workingSet: WorkingSet): ContextHeader;
-  assemble(context?: { recentMessages?: string; sessionId?: string }): ContextHeader;
+  assemble(context?: AssembleContext): ContextHeader;
   invalidate(): void;
   getWeights(): RelevanceWeights;
   setWeight(signal: string, value: number): void;
