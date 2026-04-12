@@ -84,6 +84,24 @@ Restart OpenClaw. Memrok watches session transcripts automatically and begins cu
 Set both transcript and reflection provider/model explicitly in the plugin config if you do not want Memrok falling back to its built-in defaults.
 Bootstrap is now **opt-in**. Enable it only if you explicitly want Memrok to seed itself from existing Markdown memory files.
 
+## Inspection & Evaluation
+
+Memrok ships with local inspection scripts so you can evaluate injected headers without writing back into Memrok state.
+
+Examples:
+
+```sh
+node scripts/eval-sessions.mjs --all-sessions --dry-run --json
+node scripts/eval-sessions.mjs --recent-sessions 10 --dry-run --headers
+node scripts/eval-sessions.mjs --session-id <session-id> --dry-run --headers
+```
+
+Notes:
+- `--dry-run` / `--no-persist` prevents working-set snapshot writes during probing.
+- `--json` includes the full rendered header as `headerText`.
+- `--headers` is for human-readable terminal/file output.
+- Optional filters such as `--topic`, `--channel`, `--provider`, and `--label` narrow session selection without changing the session-first model.
+
 ## Privacy & Data Flow
 
 Memrok is local-first, but not magically offline.

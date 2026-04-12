@@ -39,4 +39,4 @@ For any coding agent working in this repo (Codex, Claude Code, etc.):
 - **Prefer bounded changes over broad rewrites.** Memrok improves best through tight loops: inspect → patch → test/build → evaluate across topics.
 - **Cross-topic QA matters.** A ranking tweak that improves the Memrok topic but worsens General/PrioMind/ZHAW is not a good fix.
 - **Keep Memrok distinct from OpenClaw’s built-in memory.** Favor graph curation, supersession, expiry, topic-aware judged recall, and inspectability over generic recall duplication.
-- **Use the inspection tooling before guessing.** `scripts/inspect-header.mjs`, `scripts/eval-topics.mjs`, `scripts/inspect-reflection.mjs`, `scripts/manual-reflection.mjs`, and `scripts/inspect-lifecycle.mjs` exist to make memory quality and curation behavior visible.
+- **Use the inspection tooling before guessing.** `scripts/inspect-header.mjs`, `scripts/eval-sessions.mjs`, `scripts/inspect-reflection.mjs`, `scripts/manual-reflection.mjs`, and `scripts/inspect-lifecycle.mjs` exist to make memory quality and curation behavior visible.

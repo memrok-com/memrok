@@ -21,7 +21,7 @@ describe('StatusTracker', () => {
   it('writes a status file beside the db', () => {
     const tracker = new StatusTracker(dbPath);
     tracker.setNodeLifecycleCounts(12, 4);
-    tracker.recordTranscriptScribe('topic-540.jsonl');
+    tracker.recordTranscriptScribe('topic-101.jsonl');
     tracker.recordReflectiveScribeAttempt(256);
     tracker.recordReflectiveScribe();
     tracker.recordReflectiveScribeFailure('call-model', new Error('reflection boom'));
@@ -34,7 +34,7 @@ describe('StatusTracker', () => {
     assert.equal(parsed.nodeCount, 12);
     assert.equal(parsed.activeNodeCount, 12);
     assert.equal(parsed.expiredNodeCount, 4);
-    assert.equal(parsed.lastSourceProcessed, 'topic-540.jsonl');
+    assert.equal(parsed.lastSourceProcessed, 'topic-101.jsonl');
     assert.equal(parsed.lastErrorStage, 'transcript-scribe');
     assert.equal(parsed.lastErrorMessage, 'boom');
     assert.equal(parsed.lastReflectiveScribeInputBytes, 256);

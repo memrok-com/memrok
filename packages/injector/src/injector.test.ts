@@ -333,7 +333,7 @@ describe('injector', () => {
 
       const injector = createInjector(store);
       const header = injector.assemble({
-        recentMessages: 'Memrok injector bug: debug topic 540 ranking and fix selection regressions in product context.',
+        recentMessages: 'Memrok injector bug: debug topic 101 ranking and fix selection regressions in product context.',
       });
 
       const topicalIdx = header.text.indexOf(
@@ -373,7 +373,7 @@ describe('injector', () => {
               layer: 'user',
               category: 'project',
               key: 'user/memrok/debugging',
-              value: 'Currently debugging Memrok product issues in injector ranking for topic 540.',
+              value: 'Currently debugging Memrok product issues in injector ranking for topic 101.',
             },
             {
               operation: 'add',
@@ -391,7 +391,7 @@ describe('injector', () => {
         layerWeights: { user: 0.75, agent: 0.15, collaboration: 0.1 },
       });
       const header = injector.assemble({
-        recentMessages: 'Debug Memrok topic 540 ranking bug in the injector and fix product selection behavior.',
+        recentMessages: 'Debug Memrok topic 101 ranking bug in the injector and fix product selection behavior.',
       });
 
       const broadNode = (header.debugNodes ?? []).find((node) => node.key === 'user/bio/profile');
@@ -597,16 +597,16 @@ describe('injector', () => {
               operation: 'add',
               layer: 'user',
               category: 'project',
-              key: 'user/tandem/topic-540/ranking',
-              value: 'Tandem topic 540 is about Memrok ranking fixes, judged recall, and cross-topic bleed.',
+              key: 'user/tandem/topic-101/ranking',
+              value: 'Tandem topic 101 is about Memrok ranking fixes, judged recall, and cross-topic bleed.',
               signals: { emotional_weight: 0.2 },
             },
             {
               operation: 'add',
               layer: 'user',
               category: 'project',
-              key: 'user/tandem/topic-612/community',
-              value: 'Tandem topic 612 is about community rituals and forum moderation defaults.',
+              key: 'user/tandem/topic-202/community',
+              value: 'Tandem topic 202 is about community rituals and forum moderation defaults.',
               signals: { emotional_weight: 0.95, correction: true },
             },
           ],
@@ -622,8 +622,8 @@ describe('injector', () => {
                 operation: 'update',
                 layer: 'user',
                 category: 'project',
-                key: 'user/tandem/topic-612/community',
-                value: 'Tandem topic 612 is about community rituals and forum moderation defaults.',
+                key: 'user/tandem/topic-202/community',
+                value: 'Tandem topic 202 is about community rituals and forum moderation defaults.',
                 signals: { emotional_weight: 0.95, correction: true },
               },
             ],
@@ -636,17 +636,17 @@ describe('injector', () => {
         layerWeights: { user: 1, agent: 0, collaboration: 0 },
       });
       const header = injector.assemble({
-        recentMessages: 'Tandem topic 540: reduce cross-topic bleed in Memrok ranking and judged recall.',
+        recentMessages: 'Tandem topic 101: reduce cross-topic bleed in Memrok ranking and judged recall.',
       });
 
-      const localNode = (header.debugNodes ?? []).find((node) => node.key === 'user/tandem/topic-540/ranking');
-      const globalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/tandem/topic-612/community');
+      const localNode = (header.debugNodes ?? []).find((node) => node.key === 'user/tandem/topic-101/ranking');
+      const globalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/tandem/topic-202/community');
 
       assert.ok(localNode, 'Local Tandem topic node should be selected');
       assert.ok(globalNode, 'Same-project competing node may still survive under soft suppression');
       assert.ok((localNode?.score ?? 0) > (globalNode?.score ?? 0), 'Topic-local anchor should outrank globally salient same-project memory');
       assert.ok((localNode?.matchedAnchorIds ?? []).includes('project:tandem'));
-      assert.ok((localNode?.matchedAnchorIds ?? []).includes('topic:topic-540'));
+      assert.ok((localNode?.matchedAnchorIds ?? []).includes('topic:topic-101'));
       assert.ok((localNode?.selectedBecause ?? []).includes('topic-anchor match'));
       assert.ok(((globalNode?.scoreAdjustments.anchorMismatchPenalty ?? 0) > 0), 'Competing Tandem topic should take an anchor mismatch penalty');
     });
