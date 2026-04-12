@@ -554,6 +554,78 @@ interface ScoredCandidate {
   };
 }
 
+function hasStrongAnchorEvidence(candidate: Pick<ScoredCandidate, 'matchedAnchorIds'>): boolean {
+  return candidate.matchedAnchorIds.length > 0;
+}
+
+function hasStrongLocalEvidence(candidate: Pick<ScoredCandidate,
+  'matchedAnchorIds' | 'domainMatch' | 'queryCoverage' | 'semantic' | 'keyTokenCoverage'
+>): boolean {
+  return (
+    hasStrongAnchorEvidence(candidate) ||
+    candidate.domainMatch === true ||
+    candidate.queryCoverage >= 0.24 ||
+    candidate.semantic >= 0.34 ||
+    candidate.keyTokenCoverage >= 2
+  );
+}
+
+function hasSubstantiveLocalEvidence(candidate: Pick<ScoredCandidate,
+  'matchedAnchorIds' | 'domainMatch' | 'queryCoverage' | 'semantic' | 'keyTokenCoverage'
+>): boolean {
+  return (
+    hasStrongAnchorEvidence(candidate) ||
+    candidate.domainMatch === true ||
+    candidate.queryCoverage >= 0.34 ||
+    candidate.semantic >= 0.42 ||
+    (candidate.queryCoverage >= 0.18 && candidate.keyTokenCoverage >= 1)
+  );
+}
+
+function isEligibleCandidate(params: {
+  candidate: ScoredCandidate;
+  queryKeywords: Set<string>;
+  domainFocus: string | null;
+  hasQueryAnchors: boolean;
+}): boolean {
+  const { candidate, queryKeywords, domainFocus, hasQueryAnchors } = params;
+  if (queryKeywords.size === 0) return true;
+
+  if (candidate.outOfContextRisk >= 0.75 && !hasStrongAnchorEvidence(candidate)) {
+    return false;
+  }
+
+  if ((candidate.scoreAdjustments.anchorMismatchPenalty ?? 0) >= 0.2 && !hasStrongAnchorEvidence(candidate)) {
+    return false;
+  }
+
+  const broadEvergreen =
+    candidate.scoreAdjustments.broadBioPenalty >= 0.08 ||
+    candidate.scoreAdjustments.genericMetaPenalty >= 0.08;
+  if (broadEvergreen && !hasSubstantiveLocalEvidence(candidate)) {
+    return false;
+  }
+
+  if (domainFocus && candidate.domain && candidate.domain !== domainFocus && !hasStrongAnchorEvidence(candidate)) {
+    if (candidate.queryCoverage < 0.24 || candidate.semantic < 0.3) {
+      return false;
+    }
+  }
+
+  if ((domainFocus || hasQueryAnchors) && !hasStrongLocalEvidence(candidate)) {
+    return false;
+  }
+
+  if ((domainFocus || hasQueryAnchors) &&
+      candidate.queryCoverage < 0.1 &&
+      candidate.semantic < 0.24 &&
+      candidate.keyTokenCoverage === 0) {
+    return false;
+  }
+
+  return true;
+}
+
 export function createInjector(
   store: GraphStore & WorkingSetStore,
   config?: InjectorConfig
@@ -606,6 +678,7 @@ export function createInjector(
     const productDebugFocused = isProductDebugFocused(queryKeywords);
     const domainFocus = detectDomainFocus(queryKeywords);
     const queryAnchors = extractQueryAnchors(recentMessages, queryKeywords);
+    const hasQueryAnchors = hasAnchors(queryAnchors);
 
     // Group by layer and score
     const layerNodes: Record<LayerName, ScoredCandidate[]> = {
@@ -709,7 +782,7 @@ export function createInjector(
       if (domainBoost > 0) selectedBecause.push('domain-local recall');
       if (baseScore >= 0.45 && selectedBecause.length === 0) selectedBecause.push('durable baseline relevance');
 
-      layerNodes[layer].push({
+      const candidate: ScoredCandidate = {
         node,
         score,
         rawScore: score,
@@ -743,7 +816,29 @@ export function createInjector(
           selectionFamilyPenalty: 0,
           selectionDomainPenalty: 0,
         },
-      });
+      };
+
+      if (!isEligibleCandidate({ candidate, queryKeywords, domainFocus, hasQueryAnchors })) {
+        continue;
+      }
+
+      layerNodes[layer].push(candidate);
+    }
+
+    if (queryKeywords.size > 0) {
+      const hasGroundedCandidate = (Object.keys(layerNodes) as LayerName[]).some((layer) =>
+        layerNodes[layer].some((candidate) => hasSubstantiveLocalEvidence(candidate))
+      );
+
+      if (hasGroundedCandidate) {
+        for (const layer of Object.keys(layerNodes) as LayerName[]) {
+          layerNodes[layer] = layerNodes[layer].filter((candidate) =>
+            hasSubstantiveLocalEvidence(candidate) ||
+            candidate.queryCoverage >= 0.16 ||
+            candidate.semantic >= 0.3
+          );
+        }
+      }
     }
 
     // Sort each layer by score descending
@@ -761,6 +856,7 @@ export function createInjector(
     const selectedFamilies = new Map<string, number>();
     const selectedDomains = new Map<string, number>();
     const categoryCounts = new Map<string, number>();
+    let broadEvergreenSelections = 0;
     const layerCounts: Record<LayerName, number> = {
       user: 0,
       agent: 0,
@@ -783,6 +879,10 @@ export function createInjector(
           const candidate = remaining[i];
           const categoryKey = `${candidate.node.layer}:${candidate.node.category}`;
           if ((categoryCounts.get(categoryKey) ?? 0) >= 2) continue;
+          const broadEvergreenCandidate =
+            candidate.scoreAdjustments.broadBioPenalty >= 0.08 ||
+            candidate.scoreAdjustments.genericMetaPenalty >= 0.08;
+          if (broadEvergreenCandidate && broadEvergreenSelections >= 1) continue;
           const family = candidate.family;
           if (queryKeywords.size > 0 && (selectedFamilies.get(family) ?? 0) >= 2) continue;
           const similarities = selectedValues.map((value) => similarityScore(candidate.node.value, value));
@@ -803,6 +903,11 @@ export function createInjector(
             similarityPenalty -
             familyPenalty -
             domainPenalty;
+          const minimumAdjustedScore =
+            queryKeywords.size > 0 && (domainFocus || hasQueryAnchors)
+              ? 0.34
+              : 0;
+          if (adjustedScore < minimumAdjustedScore) continue;
           if (adjustedScore > bestAdjustedScore) {
             bestAdjustedScore = adjustedScore;
             bestIndex = i;
@@ -818,6 +923,12 @@ export function createInjector(
         const lineTokens = estimateTokens(line);
         if (sectionTokens + lineTokens > budget) break;
         selectedValues.push(node.value);
+        const broadEvergreenSelected =
+          selected.scoreAdjustments.broadBioPenalty >= 0.08 ||
+          selected.scoreAdjustments.genericMetaPenalty >= 0.08;
+        if (broadEvergreenSelected) {
+          broadEvergreenSelections++;
+        }
         const family = selected.family;
         selectedFamilies.set(family, (selectedFamilies.get(family) ?? 0) + 1);
         const domain = selected.domain;

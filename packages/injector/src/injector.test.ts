@@ -150,7 +150,7 @@ describe('injector', () => {
       );
 
       const injector = createInjector(store);
-      const header = injector.assemble({ recentMessages: 'We are evaluating Memrok itself.' });
+      const header = injector.assemble();
 
       assert.equal(header.debugNodes?.length, 1);
       assert.equal(header.nodesUsed, 1);
@@ -169,7 +169,7 @@ describe('injector', () => {
       );
 
       const injector = createInjector(store);
-      const header = injector.assemble({ recentMessages: 'We are evaluating Memrok itself.' });
+      const header = injector.assemble();
 
       assert.equal((header.debugNodes ?? []).filter((n) => n.layer === 'user' && n.category === 'belief').length, 2);
     });
@@ -344,8 +344,7 @@ describe('injector', () => {
       );
 
       assert.ok(topicalIdx !== -1, 'Topical user node should be included');
-      assert.ok(broadIdx !== -1, 'Broad user node should still be included');
-      assert.ok(topicalIdx < broadIdx, 'Topical user node should rank ahead of broad biography/admin node');
+      assert.equal(broadIdx, -1, 'Broad user node should be excluded when it lacks local evidence');
 
       const topicalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/memrok/injector-ranking');
       assert.ok(topicalNode, 'Topical node should expose debug attribution');
@@ -356,7 +355,7 @@ describe('injector', () => {
       assert.ok((topicalNode?.selectedBecause ?? []).length > 0);
     });
 
-    it('softly downweights broad biography-admin nodes without excluding them in focused product contexts', () => {
+    it('excludes broad biography-admin nodes that only contribute generic residue in focused product contexts', () => {
       store.applyPass(
         makePass({
           pass_id: 'p-soft-downweight',
@@ -398,14 +397,10 @@ describe('injector', () => {
       const topicalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/memrok/debugging');
 
       assert.ok(topicalNode, 'Topical user node should be selected');
-      assert.ok(broadNode, 'Broad biography/admin node should still be selected under a soft downweight');
-      assert.ok(
-        (topicalNode?.score ?? 0) > (broadNode?.score ?? 0),
-        'Topical user node should outscore the broad biography/admin node'
-      );
+      assert.equal(broadNode, undefined, 'Broad biography/admin node should be gated out');
     });
 
-    it('suppresses memrok and infra user nodes in a Priomind-focused context', () => {
+    it('excludes weakly grounded cross-domain user nodes in a Priomind-focused context', () => {
       store.applyPass(
         makePass({
           pass_id: 'p-domain-focus',
@@ -445,13 +440,11 @@ describe('injector', () => {
       const infraNode = (header.debugNodes ?? []).find((node) => node.key === 'user.infra.tandem_setup');
 
       assert.ok(priomindNode, 'Priomind node should be selected');
-      assert.ok(memrokNode, 'Memrok node may still survive under soft suppression');
-      assert.ok(infraNode, 'Infra node may still survive under soft suppression');
-      assert.ok((priomindNode?.score ?? 0) > (memrokNode?.score ?? 0), 'Priomind node should outrank Memrok node');
-      assert.ok((priomindNode?.score ?? 0) > (infraNode?.score ?? 0), 'Priomind node should outrank infra node');
+      assert.equal(memrokNode, undefined, 'Memrok node should be excluded without local Priomind evidence');
+      assert.equal(infraNode, undefined, 'Infra node should be excluded without local Priomind evidence');
     });
 
-    it('boosts local-domain user nodes in a health-focused context', () => {
+    it('boosts local-domain user nodes in a health-focused context while excluding stale domain bleed', () => {
       store.applyPass(
         makePass({
           pass_id: 'p-health-domain',
@@ -483,8 +476,7 @@ describe('injector', () => {
       const priomindNode = (header.debugNodes ?? []).find((node) => node.key === 'user.priomind.gtm_shift');
 
       assert.ok(healthNode, 'Health node should be selected');
-      assert.ok(priomindNode, 'Cross-domain node may still survive under soft suppression');
-      assert.ok((healthNode?.score ?? 0) > (priomindNode?.score ?? 0), 'Health node should outrank weakly related Priomind node');
+      assert.equal(priomindNode, undefined, 'Cross-domain node should be excluded when health-local evidence is available');
     });
 
     it('applies domain-local recall across agent and collaboration layers, not just user nodes', () => {
@@ -531,9 +523,7 @@ describe('injector', () => {
 
       assert.ok(priomindAgentNode, 'Priomind agent node should be selected');
       assert.ok(priomindCollabNode, 'Priomind collaboration node should be selected');
-      assert.ok(memrokAgentNode, 'Cross-domain agent node may still survive under soft suppression');
-      assert.ok((priomindAgentNode?.score ?? 0) > (memrokAgentNode?.score ?? 0), 'Priomind agent node should outrank cross-domain agent node');
-      assert.ok((priomindCollabNode?.score ?? 0) > (memrokAgentNode?.score ?? 0), 'Priomind collaboration node should outrank cross-domain agent node');
+      assert.equal(memrokAgentNode, undefined, 'Cross-domain agent node should be excluded without local Priomind evidence');
     });
 
     it('prefers topic-relevant family diversity over selecting one graph family repeatedly', () => {
@@ -643,12 +633,10 @@ describe('injector', () => {
       const globalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/tandem/topic-202/community');
 
       assert.ok(localNode, 'Local Tandem topic node should be selected');
-      assert.ok(globalNode, 'Same-project competing node may still survive under soft suppression');
-      assert.ok((localNode?.score ?? 0) > (globalNode?.score ?? 0), 'Topic-local anchor should outrank globally salient same-project memory');
+      assert.equal(globalNode, undefined, 'Competing same-project topic should be excluded when it mismatches the local anchor');
       assert.ok((localNode?.matchedAnchorIds ?? []).includes('project:tandem'));
       assert.ok((localNode?.matchedAnchorIds ?? []).includes('topic:topic-101'));
       assert.ok((localNode?.selectedBecause ?? []).includes('topic-anchor match'));
-      assert.ok(((globalNode?.scoreAdjustments.anchorMismatchPenalty ?? 0) > 0), 'Competing Tandem topic should take an anchor mismatch penalty');
     });
 
     it('supports person anchors as a local retrieval prior without changing anchor-free behavior', () => {
@@ -687,10 +675,59 @@ describe('injector', () => {
       const miraNode = (header.debugNodes ?? []).find((node) => node.key === 'collaboration/people/mira/feedback-style');
 
       assert.ok(tobiNode, 'Person-local collaboration node should be selected');
-      assert.ok(miraNode, 'Other person node may still survive under soft suppression');
-      assert.ok((tobiNode?.score ?? 0) > (miraNode?.score ?? 0), 'Matching person anchor should outrank more globally salient alternative');
+      assert.equal(miraNode, undefined, 'Other person node should be excluded when it conflicts with the local anchor');
       assert.ok((tobiNode?.matchedAnchorIds ?? []).includes('person:tobi'));
       assert.ok((tobiNode?.selectedBecause ?? []).includes('person-anchor match'));
+    });
+
+    it('leaves header space unused when only one node has strong local evidence', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-sparse-header',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/schmidle-impuls/logo/review',
+              value: 'Schmidle Impuls logo review should stay close to the current business brief and typography choices.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'belief',
+              key: 'user/memrok/community',
+              value: 'Memrok community notes matter for plugin distribution and OpenClaw collaboration.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/health/routine',
+              value: 'Old health notes focus on sleep routine and recovery experiments.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/profile/general-style',
+              value: 'Generic profile: prefers concise updates across projects.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, {
+        tokenBudget: 320,
+        layerWeights: { user: 1, agent: 0, collaboration: 0 },
+      });
+      const header = injector.assemble({
+        recentMessages: 'Schmidle Impuls business logo direction, typography, and current brief review.',
+      });
+
+      const selectedKeys = (header.debugNodes ?? []).map((node) => node.key);
+      assert.deepEqual(selectedKeys, ['user/schmidle-impuls/logo/review']);
+      assert.equal(header.nodesUsed, 1, 'Header should stay sparse instead of filling with weak residue');
     });
   });
 
