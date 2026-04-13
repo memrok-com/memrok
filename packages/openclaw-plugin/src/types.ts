@@ -14,12 +14,18 @@ export interface ReflectionConfig {
 }
 
 export interface BootstrapConfig {
-  /** Enable seeding the graph from existing memory files on first start. Default: true */
+  /** Enable seeding the graph from existing memory files. Default: false */
   enabled?: boolean;
   /** Directory to scan for .md files. Default: auto-detect from workspace + '/memory/' */
   memoryDir?: string;
+  /** Additional directories to scan for .md files. */
+  memoryDirs?: string[];
   /** Path to MEMORY.md index file. Default: auto-detect from workspace + '/MEMORY.md' */
   memoryIndex?: string;
+  /** Additional MEMORY.md index files to scan. */
+  memoryIndexes?: string[];
+  /** Discover MEMORY.md and memory/ targets from configured OpenClaw agents. Default: true */
+  scanConfiguredAgents?: boolean;
   /** Skip files older than this many days. Default: 90 */
   maxAgeDays?: number;
   /** Delay in ms between processing files to avoid rate limits. Default: 10000 */
@@ -49,7 +55,10 @@ export interface ResolvedReflectionConfig {
 export interface ResolvedBootstrapConfig {
   enabled: boolean;
   memoryDir?: string;
+  memoryDirs: string[];
   memoryIndex?: string;
+  memoryIndexes: string[];
+  scanConfiguredAgents: boolean;
   maxAgeDays: number;
   delayMs: number;
 }
@@ -158,6 +167,25 @@ export interface PluginService {
   stop(): Promise<void>;
 }
 
+export interface PluginCommandContext {
+  args?: string;
+  sessionId?: string;
+  sessionKey?: string;
+}
+
+export interface PluginCommandResult {
+  text: string;
+}
+
+export interface PluginCommandDefinition {
+  name: string;
+  nativeNames?: Record<string, string>;
+  nativeProgressMessages?: Record<string, string>;
+  description: string;
+  acceptsArgs?: boolean;
+  handler(ctx: PluginCommandContext): Promise<PluginCommandResult>;
+}
+
 export interface PluginApi {
   pluginConfig?: Record<string, unknown>;
   config?: unknown;
@@ -166,6 +194,7 @@ export interface PluginApi {
   registrationMode?: 'full' | 'setup-only' | 'setup-runtime';
   registerContextEngine(id: string, factory: () => ContextEngine): void;
   registerService(service: PluginService): void;
+  registerCommand?(command: PluginCommandDefinition): void;
 }
 
 export interface PluginRegistration {

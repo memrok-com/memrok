@@ -1,5 +1,6 @@
 import { watch, type FSWatcher } from 'chokidar';
 import { readFileSync, writeFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { WatcherConfig, CursorState } from './types.js';
@@ -22,7 +23,10 @@ export class TranscriptWatcher extends EventEmitter {
     super();
     this.config = config;
     this.debounceMs = config.debounceMs ?? DEFAULT_DEBOUNCE_MS;
-    this.cursorPath = cursorPath ?? resolve(process.cwd(), '.memrok-cursors.json');
+    const baseDir = process.env.OPENCLAW_DATA_DIR
+      || process.env.OPENCLAW_STATE_DIR
+      || resolve(homedir(), '.openclaw');
+    this.cursorPath = cursorPath ?? resolve(baseDir, '.memrok-cursors.json');
     this.loadCursors();
   }
 
@@ -43,27 +47,51 @@ export class TranscriptWatcher extends EventEmitter {
     return { ...this.cursors };
   }
 
-  readNewContent(filePath: string): string | null {
-    const offset = this.cursors[filePath] ?? 0;
-    let size: number;
+  setCursor(filePath: string, offset: number): void {
+    this.cursors[filePath] = Math.max(0, offset);
+  }
+
+  getFileSize(filePath: string): number | null {
     try {
-      size = statSync(filePath).size;
+      return statSync(filePath).size;
     } catch {
       return null;
     }
+  }
 
-    if (size <= offset) return null;
+  readContentFromOffset(filePath: string, offset: number): { content: string | null; nextOffset: number } | null {
+    const size = this.getFileSize(filePath);
+    if (size === null) {
+      return null;
+    }
+
+    if (size <= offset) {
+      return { content: null, nextOffset: offset };
+    }
 
     const fd = openSync(filePath, 'r');
     try {
-      const length = size - offset;
+      const nextOffset = size;
+      const length = nextOffset - offset;
       const buf = Buffer.alloc(length);
       readSync(fd, buf, 0, length, offset);
-      this.cursors[filePath] = size;
-      return buf.toString('utf-8');
+      return {
+        content: buf.toString('utf-8'),
+        nextOffset,
+      };
     } finally {
       closeSync(fd);
     }
+  }
+
+  readNewContent(filePath: string): string | null {
+    const offset = this.cursors[filePath] ?? 0;
+    const result = this.readContentFromOffset(filePath, offset);
+    if (!result?.content) {
+      return null;
+    }
+    this.cursors[filePath] = result.nextOffset;
+    return result.content;
   }
 
   start(): void {

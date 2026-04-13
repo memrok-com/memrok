@@ -11,7 +11,10 @@ export type {
   ContextEngine,
   ContextHeader,
   MemrokPluginConfig,
-  PluginApi,
-  PluginRegistration,
-  ResolvedConfig,
-} from './types.js';
+    PluginApi,
+    PluginCommandContext,
+    PluginCommandDefinition,
+    PluginCommandResult,
+    PluginRegistration,
+    ResolvedConfig,
+  } from './types.js';
