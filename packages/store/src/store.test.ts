@@ -337,6 +337,81 @@ describe('Store', () => {
     });
   });
 
+  describe('node hygiene', () => {
+    beforeEach(() => {
+      store.applyPass({
+        pass_id: 'hygiene-pass',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'user',
+            category: 'preference',
+            key: 'user/bio/profile',
+            value: 'Broad biography and admin preference summary.',
+          },
+        ],
+      });
+    });
+
+    it('stores reversible hygiene state alongside nodes', () => {
+      const record = store.upsertNodeHygiene({
+        nodeKey: 'user/bio/profile',
+        state: 'suppressed',
+        action: 'exclude',
+        score: 0.91,
+        rationale: 'Old broad node with weak anchors in focused contexts.',
+        reasonCodes: ['old-node', 'broad-bio-admin', 'weak-anchor'],
+        details: { ageDays: 140, domain: null },
+        source: 'test:hygiene',
+      });
+
+      assert.equal(record.node_key, 'user/bio/profile');
+      assert.equal(record.action, 'exclude');
+      assert.deepEqual(record.reason_codes, ['old-node', 'broad-bio-admin', 'weak-anchor']);
+
+      const node = store.getNode('user/bio/profile');
+      assert.equal(node?.hygiene?.state, 'suppressed');
+      assert.equal(node?.hygiene?.score, 0.91);
+
+      const active = store.listNodeHygiene();
+      assert.equal(active.length, 1);
+      assert.equal(active[0].node_key, 'user/bio/profile');
+
+      const events = store.listNodeHygieneEvents();
+      assert.equal(events.length, 1);
+      assert.equal(events[0].event_type, 'set');
+      assert.equal(events[0].node_key, 'user/bio/profile');
+    });
+
+    it('clears hygiene state while preserving an audit trail', () => {
+      store.upsertNodeHygiene({
+        nodeKey: 'user/bio/profile',
+        state: 'deprioritized',
+        action: 'deprioritize',
+        score: 0.72,
+        rationale: 'Broad but not fully suppressible.',
+        reasonCodes: ['generic-meta'],
+        source: 'test:hygiene',
+      });
+
+      const cleared = store.clearNodeHygiene(
+        'user/bio/profile',
+        'test:hygiene:clear',
+        'Manual review restored this node.',
+      );
+
+      assert.equal(cleared, true);
+      assert.equal(store.getNode('user/bio/profile')?.hygiene, null);
+      assert.equal(store.listNodeHygiene().length, 0);
+
+      const events = store.listNodeHygieneEvents();
+      assert.equal(events.length, 2);
+      assert.equal(events[0].event_type, 'clear');
+      assert.equal(events[0].source, 'test:hygiene:clear');
+      assert.equal(events[1].event_type, 'set');
+    });
+  });
+
   describe('working set traces and provenance', () => {
     it('records retention-bounded working set traces', () => {
       const first = store.createWorkingSetSnapshot(

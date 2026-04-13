@@ -93,6 +93,7 @@ export interface Node {
   last_referenced: string | null;
   first_pass_id: string;
   last_pass_id: string;
+  hygiene: NodeHygieneRecord | null;
 }
 
 export interface Pass {
@@ -112,6 +113,47 @@ export interface NodeFilter {
   category?: string;
   active?: boolean;
   keyPrefix?: string;
+}
+
+export type NodeHygieneState = 'suppressed' | 'deprioritized';
+export type NodeHygieneAction = 'exclude' | 'deprioritize';
+
+export interface NodeHygieneRecord {
+  node_key: string;
+  state: NodeHygieneState;
+  action: NodeHygieneAction;
+  score: number;
+  rationale: string;
+  reason_codes: string[];
+  details: Record<string, unknown> | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NodeHygieneEvent {
+  id: number;
+  node_key: string;
+  event_type: 'set' | 'clear';
+  state: NodeHygieneState | null;
+  action: NodeHygieneAction | null;
+  score: number | null;
+  rationale: string | null;
+  reason_codes: string[];
+  details: Record<string, unknown> | null;
+  source: string;
+  created_at: string;
+}
+
+export interface UpsertNodeHygieneInput {
+  nodeKey: string;
+  state: NodeHygieneState;
+  action: NodeHygieneAction;
+  score: number;
+  rationale: string;
+  reasonCodes: string[];
+  details?: Record<string, unknown>;
+  source: string;
 }
 
 export interface ApplyResult {
@@ -196,6 +238,11 @@ export interface GraphStore {
   queryNodes(filter?: NodeFilter): Node[];
   getNode(key: string): Node | null;
   getHistory(key: string): Mutation[];
+  getNodeHygiene(key: string): NodeHygieneRecord | null;
+  listNodeHygiene(): NodeHygieneRecord[];
+  listNodeHygieneEvents(limit?: number): NodeHygieneEvent[];
+  upsertNodeHygiene(input: UpsertNodeHygieneInput): NodeHygieneRecord;
+  clearNodeHygiene(key: string, source: string, rationale?: string): boolean;
   listPasses(): Pass[];
   getProvenanceForPass(passId: string): ProvenanceLink;
   rebuild(): void;

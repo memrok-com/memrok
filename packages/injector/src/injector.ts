@@ -539,6 +539,9 @@ interface ScoredCandidate {
   selectedBecause: string[];
   anchorIds: string[];
   matchedAnchorIds: string[];
+  hygieneState: 'suppressed' | 'deprioritized' | null;
+  hygieneAction: 'exclude' | 'deprioritize' | null;
+  hygieneScore: number | null;
   scoreAdjustments: {
     queryCoverageBoost: number;
     keyMatchBoost: number;
@@ -548,6 +551,7 @@ interface ScoredCandidate {
     broadBioPenalty: number;
     genericMetaPenalty: number;
     crossDomainPenalty: number;
+    hygienePenalty: number;
     selectionSimilarityPenalty: number;
     selectionFamilyPenalty: number;
     selectionDomainPenalty: number;
@@ -582,6 +586,19 @@ function hasSubstantiveLocalEvidence(candidate: Pick<ScoredCandidate,
   );
 }
 
+function hasExcludeOverrideEvidence(candidate: Pick<ScoredCandidate,
+  'matchedAnchorIds' | 'domainMatch' | 'queryCoverage' | 'semantic' | 'keyTokenCoverage'
+>): boolean {
+  return (
+    hasStrongAnchorEvidence(candidate) ||
+    (candidate.domainMatch === true && candidate.queryCoverage >= 0.28) ||
+    candidate.queryCoverage >= 0.45 ||
+    (candidate.queryCoverage >= 0.3 && candidate.semantic >= 0.4) ||
+    candidate.keyTokenCoverage >= 3 ||
+    (candidate.keyTokenCoverage >= 2 && candidate.queryCoverage >= 0.2)
+  );
+}
+
 function isEligibleCandidate(params: {
   candidate: ScoredCandidate;
   queryKeywords: Set<string>;
@@ -596,6 +613,16 @@ function isEligibleCandidate(params: {
   }
 
   if ((candidate.scoreAdjustments.anchorMismatchPenalty ?? 0) >= 0.2 && !hasStrongAnchorEvidence(candidate)) {
+    return false;
+  }
+
+  if (candidate.hygieneAction === 'exclude' && !hasExcludeOverrideEvidence(candidate)) {
+    return false;
+  }
+
+  if (candidate.hygieneAction === 'deprioritize' &&
+      (domainFocus || hasQueryAnchors) &&
+      !hasStrongLocalEvidence(candidate)) {
     return false;
   }
 
@@ -709,6 +736,7 @@ export function createInjector(
       let broadBioPenalty = 0;
       let genericMetaPenalty = 0;
       let crossDomainPenalty = 0;
+      let hygienePenalty = 0;
       const selectedBecause: string[] = [];
 
       if (layer === 'user' && queryKeywords.size > 0) {
@@ -746,6 +774,14 @@ export function createInjector(
         }
       }
 
+      const excludeOverrideEvidence = hasExcludeOverrideEvidence({
+        matchedAnchorIds,
+        domainMatch: domainFocus ? nodeDomain === domainFocus : null,
+        queryCoverage,
+        semantic,
+        keyTokenCoverage,
+      });
+
       if (productDebugFocused) {
         const broadBioAdminScore = computeBroadBioAdminScore(node);
         if (broadBioAdminScore > 0) {
@@ -776,10 +812,33 @@ export function createInjector(
         }
       }
 
+      const hygiene = node.hygiene;
+      if (hygiene) {
+        const hygieneIntensity = Math.max(0, Math.min(1, hygiene.score));
+        if (queryKeywords.size > 0) {
+          hygienePenalty =
+            hygiene.action === 'exclude'
+              ? 0.28 + (0.32 * hygieneIntensity)
+              : 0.12 + (0.2 * hygieneIntensity);
+        } else {
+          hygienePenalty =
+            hygiene.action === 'exclude'
+              ? 0.08 + (0.12 * hygieneIntensity)
+              : 0.04 + (0.08 * hygieneIntensity);
+        }
+        if (excludeOverrideEvidence) {
+          hygienePenalty *= 0.35;
+        }
+        score -= hygienePenalty;
+      }
+
       if (semantic >= 0.35) selectedBecause.push('semantic match');
       if (queryCoverageBoost > 0.12) selectedBecause.push('query coverage');
       if (keyMatchBoost > 0) selectedBecause.push('key-family overlap');
       if (domainBoost > 0) selectedBecause.push('domain-local recall');
+      if (hygiene && excludeOverrideEvidence) {
+        selectedBecause.push('hygiene override');
+      }
       if (baseScore >= 0.45 && selectedBecause.length === 0) selectedBecause.push('durable baseline relevance');
 
       const candidate: ScoredCandidate = {
@@ -794,6 +853,9 @@ export function createInjector(
         domainMatch: domainFocus ? nodeDomain === domainFocus : null,
         anchorIds: listAnchorIds(nodeAnchors),
         matchedAnchorIds,
+        hygieneState: hygiene?.state ?? null,
+        hygieneAction: hygiene?.action ?? null,
+        hygieneScore: hygiene?.score ?? null,
         outOfContextRisk: computeOutOfContextRisk({
           queryKeywords,
           semantic,
@@ -812,6 +874,7 @@ export function createInjector(
           broadBioPenalty,
           genericMetaPenalty,
           crossDomainPenalty,
+          hygienePenalty,
           selectionSimilarityPenalty: 0,
           selectionFamilyPenalty: 0,
           selectionDomainPenalty: 0,
@@ -972,6 +1035,9 @@ export function createInjector(
           selectedBecause: selected.selectedBecause,
           anchorIds: selected.anchorIds,
           matchedAnchorIds: selected.matchedAnchorIds,
+          hygieneState: selected.hygieneState,
+          hygieneAction: selected.hygieneAction,
+          hygieneScore: selected.hygieneScore,
           scoreAdjustments: {
             ...selected.scoreAdjustments,
             selectionSimilarityPenalty,
@@ -1023,6 +1089,9 @@ export function createInjector(
           selectedBecause: item.selectedBecause,
           anchorIds: item.anchorIds,
           matchedAnchorIds: item.matchedAnchorIds,
+          hygieneState: item.hygieneState,
+          hygieneAction: item.hygieneAction,
+          hygieneScore: item.hygieneScore,
           scoreAdjustments: item.scoreAdjustments,
         }))
       );

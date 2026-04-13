@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc --build",
     "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "hygiene:broad-nodes": "npx tsx scripts/hygiene-broad-nodes.ts"
   },
   "license": "MIT",
   "repository": {

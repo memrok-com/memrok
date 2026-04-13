@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "pretest": "npm --prefix ../.. run build --workspace @memrok/store",
     "build": "tsc",
     "test": "vitest run"
   },

@@ -55,11 +55,13 @@ for (const node of header.debugNodes ?? []) {
   lines.push(`  key: ${node.key}`);
   lines.push(`  family: ${node.family} domain=${node.domain ?? 'none'} domainMatch=${node.domainMatch === null ? 'n/a' : String(node.domainMatch)}`);
   lines.push(`  semantic=${node.semanticScore.toFixed(3)} queryCoverage=${node.queryCoverage.toFixed(3)} keyCoverage=${node.keyTokenCoverage}`);
+  lines.push(`  hygiene: state=${node.hygieneState ?? 'none'} action=${node.hygieneAction ?? 'none'} score=${node.hygieneScore === null ? 'n/a' : node.hygieneScore.toFixed(2)}`);
   lines.push(`  because: ${(node.selectedBecause ?? []).join(', ') || 'baseline relevance'}`);
   lines.push(
     `  adjustments: query+${node.scoreAdjustments.queryCoverageBoost.toFixed(3)} key+${node.scoreAdjustments.keyMatchBoost.toFixed(3)} ` +
     `domain+${node.scoreAdjustments.domainBoost.toFixed(3)} broad-${node.scoreAdjustments.broadBioPenalty.toFixed(3)} ` +
     `meta-${node.scoreAdjustments.genericMetaPenalty.toFixed(3)} cross-${node.scoreAdjustments.crossDomainPenalty.toFixed(3)} ` +
+    `hygiene-${node.scoreAdjustments.hygienePenalty.toFixed(3)} ` +
     `dup-${node.scoreAdjustments.selectionSimilarityPenalty.toFixed(3)} family-${node.scoreAdjustments.selectionFamilyPenalty.toFixed(3)} ` +
     `domainSel-${node.scoreAdjustments.selectionDomainPenalty.toFixed(3)}`
   );
