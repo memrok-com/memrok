@@ -1,16 +1,17 @@
 {
   "name": "@memrok/injector",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "pretest": "npm --prefix ../.. run build --workspace @memrok/store",
     "build": "tsc",
     "test": "vitest run"
   },
   "dependencies": {
-    "@memrok/store": "0.5.0"
+    "@memrok/store": "0.5.1"
   },
   "devDependencies": {
     "tsx": "^4.19.4",

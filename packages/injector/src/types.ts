@@ -46,6 +46,9 @@ export interface ContextHeaderDebugNode {
   selectedBecause: string[];
   anchorIds: string[];
   matchedAnchorIds: string[];
+  hygieneState: 'suppressed' | 'deprioritized' | null;
+  hygieneAction: 'exclude' | 'deprioritize' | null;
+  hygieneScore: number | null;
   scoreAdjustments: {
     queryCoverageBoost: number;
     keyMatchBoost: number;
@@ -55,6 +58,7 @@ export interface ContextHeaderDebugNode {
     broadBioPenalty: number;
     genericMetaPenalty: number;
     crossDomainPenalty: number;
+    hygienePenalty: number;
     selectionSimilarityPenalty: number;
     selectionFamilyPenalty: number;
     selectionDomainPenalty: number;
@@ -83,6 +87,9 @@ export interface WorkingSetItem {
   selectedBecause: string[];
   anchorIds: string[];
   matchedAnchorIds: string[];
+  hygieneState: ContextHeaderDebugNode['hygieneState'];
+  hygieneAction: ContextHeaderDebugNode['hygieneAction'];
+  hygieneScore: ContextHeaderDebugNode['hygieneScore'];
   scoreAdjustments: ContextHeaderDebugNode['scoreAdjustments'];
 }
 

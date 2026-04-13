@@ -1,6 +1,6 @@
 {
   "name": "@memrok/daemon",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -13,9 +13,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@memrok/store": "0.5.0",
-    "@memrok/injector": "0.5.0",
-    "@memrok/scribe": "0.5.0",
+    "@memrok/store": "0.5.1",
+    "@memrok/injector": "0.5.1",
+    "@memrok/scribe": "0.5.1",
     "chokidar": "^4.0.3"
   },
   "devDependencies": {

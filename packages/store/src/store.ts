@@ -20,6 +20,9 @@ import type {
   WorkingSetSnapshotItem,
   WorkingSetSnapshotTrace,
   ProvenanceLink,
+  NodeHygieneRecord,
+  NodeHygieneEvent,
+  UpsertNodeHygieneInput,
 } from './types.js';
 
 const require = createRequire(import.meta.url);
@@ -121,6 +124,80 @@ export function createStore(dbPath: string): Store {
     };
   }
 
+  function mapNodeHygiene(row: Record<string, unknown> | undefined): NodeHygieneRecord | null {
+    if (!row) return null;
+    const state = (row.hygiene_state ?? row.state) as NodeHygieneRecord['state'] | null | undefined;
+    if (state === null || state === undefined) return null;
+    return {
+      node_key: (row.hygiene_node_key ?? row.node_key) as string,
+      state,
+      action: (row.hygiene_action ?? row.action) as NodeHygieneRecord['action'],
+      score: (row.hygiene_score ?? row.score) as number,
+      rationale: (row.hygiene_rationale ?? row.rationale) as string,
+      reason_codes: parseJson<string[]>(((row.hygiene_reason_codes ?? row.reason_codes) as string | null) ?? null) ?? [],
+      details: parseJson<Record<string, unknown>>(((row.hygiene_details ?? row.details) as string | null) ?? null),
+      source: (row.hygiene_source ?? row.source) as string,
+      created_at: (row.hygiene_created_at ?? row.created_at) as string,
+      updated_at: (row.hygiene_updated_at ?? row.updated_at) as string,
+    };
+  }
+
+  function mapNode(row: Record<string, unknown> | undefined): Node | null {
+    if (!row) return null;
+    return {
+      key: row.key as string,
+      layer: row.layer as string,
+      category: row.category as string,
+      value: row.value as string,
+      evidence: (row.evidence as string | null) ?? null,
+      created_at: row.created_at as string,
+      updated_at: row.updated_at as string,
+      expired_at: (row.expired_at as string | null) ?? null,
+      version: row.version as number,
+      emotional_weight: row.emotional_weight as number,
+      reference_count: row.reference_count as number,
+      correction_count: row.correction_count as number,
+      last_referenced: (row.last_referenced as string | null) ?? null,
+      first_pass_id: row.first_pass_id as string,
+      last_pass_id: row.last_pass_id as string,
+      hygiene: mapNodeHygiene(row),
+    };
+  }
+
+  function mapNodeHygieneEvent(row: Record<string, unknown> | undefined): NodeHygieneEvent | null {
+    if (!row) return null;
+    return {
+      id: row.id as number,
+      node_key: row.node_key as string,
+      event_type: row.event_type as NodeHygieneEvent['event_type'],
+      state: (row.state as NodeHygieneRecord['state'] | null) ?? null,
+      action: (row.action as NodeHygieneRecord['action'] | null) ?? null,
+      score: (row.score as number | null) ?? null,
+      rationale: (row.rationale as string | null) ?? null,
+      reason_codes: parseJson<string[]>((row.reason_codes as string | null) ?? null) ?? [],
+      details: parseJson<Record<string, unknown>>((row.details as string | null) ?? null),
+      source: row.source as string,
+      created_at: row.created_at as string,
+    };
+  }
+
+  const NODE_WITH_HYGIENE_SELECT = `
+    SELECT
+      nodes.*,
+      node_hygiene.node_key AS hygiene_node_key,
+      node_hygiene.state AS hygiene_state,
+      node_hygiene.action AS hygiene_action,
+      node_hygiene.score AS hygiene_score,
+      node_hygiene.rationale AS hygiene_rationale,
+      node_hygiene.reason_codes AS hygiene_reason_codes,
+      node_hygiene.details AS hygiene_details,
+      node_hygiene.source AS hygiene_source,
+      node_hygiene.created_at AS hygiene_created_at,
+      node_hygiene.updated_at AS hygiene_updated_at
+    FROM nodes
+    LEFT JOIN node_hygiene ON node_hygiene.node_key = nodes.key
+  `;
+
   // Prepared statements
   const insertArchiveObservation = db.prepare(`
     INSERT INTO archive_observations (kind, source, session_id, content, metadata)
@@ -158,7 +235,7 @@ export function createStore(dbPath: string): Store {
     VALUES (@pass_id, @source, @model, @derived_artifact_id, @turns_processed, @mutations_count, @observations, @duration_ms)
   `);
 
-  const getNodeByKey = db.prepare('SELECT * FROM nodes WHERE key = ?');
+  const getNodeByKey = db.prepare(`${NODE_WITH_HYGIENE_SELECT} WHERE nodes.key = ?`);
 
   const insertNode = db.prepare(`
     INSERT INTO nodes (key, layer, category, value, evidence, created_at, updated_at, version, emotional_weight, reference_count, correction_count, last_referenced, first_pass_id, last_pass_id)
@@ -202,6 +279,45 @@ export function createStore(dbPath: string): Store {
 
   const getAllPasses = db.prepare(
     'SELECT * FROM passes ORDER BY timestamp ASC'
+  );
+
+  const getNodeHygieneByKey = db.prepare(
+    'SELECT * FROM node_hygiene WHERE node_key = ?'
+  );
+
+  const listNodeHygieneRows = db.prepare(
+    'SELECT * FROM node_hygiene ORDER BY score DESC, updated_at DESC, node_key ASC'
+  );
+
+  const listNodeHygieneEventRows = db.prepare(
+    'SELECT * FROM node_hygiene_events ORDER BY id DESC LIMIT ?'
+  );
+
+  const upsertNodeHygieneRow = db.prepare(`
+    INSERT INTO node_hygiene
+      (node_key, state, action, score, rationale, reason_codes, details, source, created_at, updated_at)
+    VALUES
+      (@node_key, @state, @action, @score, @rationale, @reason_codes, @details, @source, @created_at, @updated_at)
+    ON CONFLICT(node_key) DO UPDATE SET
+      state = excluded.state,
+      action = excluded.action,
+      score = excluded.score,
+      rationale = excluded.rationale,
+      reason_codes = excluded.reason_codes,
+      details = excluded.details,
+      source = excluded.source,
+      updated_at = excluded.updated_at
+  `);
+
+  const insertNodeHygieneEvent = db.prepare(`
+    INSERT INTO node_hygiene_events
+      (node_key, event_type, state, action, score, rationale, reason_codes, details, source)
+    VALUES
+      (@node_key, @event_type, @state, @action, @score, @rationale, @reason_codes, @details, @source)
+  `);
+
+  const deleteNodeHygieneByKey = db.prepare(
+    'DELETE FROM node_hygiene WHERE node_key = ?'
   );
 
   const getPassById = db.prepare(
@@ -253,7 +369,7 @@ export function createStore(dbPath: string): Store {
     passId: string,
     timestamp: string
   ): 'created' | 'updated' | 'expired' | 'noop' {
-    const existing = getNodeByKey.get(mut.key) as Node | undefined;
+    const existing = mapNode(getNodeByKey.get(mut.key) as Record<string, unknown>);
     const emotionalWeight = mut.signals?.emotional_weight ?? 0.0;
     const isCorrection = mut.signals?.correction ?? false;
 
@@ -417,6 +533,56 @@ export function createStore(dbPath: string): Store {
   }
 
   const createWorkingSetSnapshotTx = (
+    return db.prepare(`${NODE_WITH_HYGIENE_SELECT} ${where} ORDER BY nodes.key`)
+      .all(params)
+      .map((row) => mapNode(row as Record<string, unknown>)!)
+      .filter(Boolean);
+  }
+
+  const upsertNodeHygieneTx = db.transaction((input: UpsertNodeHygieneInput): NodeHygieneRecord => {
+    const timestamp = now();
+    const payload = {
+      node_key: input.nodeKey,
+      state: input.state,
+      action: input.action,
+      score: input.score,
+      rationale: input.rationale,
+      reason_codes: JSON.stringify(input.reasonCodes),
+      details: serializeJson(input.details),
+      source: input.source,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+
+    upsertNodeHygieneRow.run(payload);
+    insertNodeHygieneEvent.run({
+      ...payload,
+      event_type: 'set',
+    });
+
+    return mapNodeHygiene(getNodeHygieneByKey.get(input.nodeKey) as Record<string, unknown>)!;
+  });
+
+  const clearNodeHygieneTx = db.transaction((key: string, source: string, rationale?: string): boolean => {
+    const existing = getNodeHygieneByKey.get(key) as Record<string, unknown> | undefined;
+    if (!existing) return false;
+
+    insertNodeHygieneEvent.run({
+      node_key: key,
+      event_type: 'clear',
+      state: null,
+      action: null,
+      score: null,
+      rationale: rationale ?? null,
+      reason_codes: null,
+      details: null,
+      source,
+    });
+    deleteNodeHygieneByKey.run(key);
+    return true;
+  });
+
+  const createWorkingSetSnapshotTx = db.transaction((
     input: CreateWorkingSetSnapshotInput,
     retention?: WorkingSetRetentionPolicy,
   ): WorkingSetSnapshotTrace => withTransaction(() => {
@@ -543,6 +709,24 @@ export function createStore(dbPath: string): Store {
     getNode: (key: string) => (asRow(getNodeByKey.get(key)) as unknown as Node) ?? null,
     getHistory: (key: string) => asRows(getMutationsByKey.all(key)) as unknown as Mutation[],
     listPasses: () => asRows(getAllPasses.all()) as unknown as Pass[],
+    getNode: (key: string) => mapNode(getNodeByKey.get(key) as Record<string, unknown>),
+    getHistory: (key: string) => getMutationsByKey.all(key) as Mutation[],
+    getNodeHygiene: (key: string) =>
+      mapNodeHygiene(getNodeHygieneByKey.get(key) as Record<string, unknown>),
+    listNodeHygiene: () =>
+      listNodeHygieneRows
+        .all()
+        .map((row) => mapNodeHygiene(row as Record<string, unknown>)!)
+        .filter(Boolean),
+    listNodeHygieneEvents: (limit = 100) =>
+      listNodeHygieneEventRows
+        .all(limit)
+        .map((row) => mapNodeHygieneEvent(row as Record<string, unknown>)!)
+        .filter(Boolean),
+    upsertNodeHygiene: (input: UpsertNodeHygieneInput) => upsertNodeHygieneTx(input),
+    clearNodeHygiene: (key: string, source: string, rationale?: string) =>
+      clearNodeHygieneTx(key, source, rationale),
+    listPasses: () => getAllPasses.all() as Pass[],
     createWorkingSetSnapshot: (
       input: CreateWorkingSetSnapshotInput,
       retention?: WorkingSetRetentionPolicy,

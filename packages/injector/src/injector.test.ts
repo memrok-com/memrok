@@ -400,6 +400,140 @@ describe('injector', () => {
       assert.equal(broadNode, undefined, 'Broad biography/admin node should be gated out');
     });
 
+    it('respects stored hygiene suppression for broad nodes in focused contexts', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-hygiene-suppression',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/profile/global-admin',
+              value: 'Broad profile note: prefers biography framing and global admin summaries across projects.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/memrok/fizzy-card-80',
+              value: 'Working on Memrok card 80 to reduce focused-context injection noise.',
+            },
+          ],
+        })
+      );
+      store.upsertNodeHygiene({
+        nodeKey: 'user/profile/global-admin',
+        state: 'suppressed',
+        action: 'exclude',
+        score: 0.9,
+        rationale: 'Old broad node with weak anchors and cross-domain leakage risk.',
+        reasonCodes: ['very-old', 'broad-bio-admin', 'weak-anchor'],
+        source: 'test:hygiene',
+      });
+
+      const injector = createInjector(store);
+      const header = injector.assemble({
+        recentMessages: 'Memrok card 80 patch: fix focused topic injection noise and broad-node leakage in context selection.',
+      });
+
+      const broadNode = (header.debugNodes ?? []).find((node) => node.key === 'user/profile/global-admin');
+      const topicalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/memrok/fizzy-card-80');
+
+      assert.ok(topicalNode, 'Focused Memrok node should survive');
+      assert.equal(broadNode, undefined, 'Hygiene-suppressed broad node should not leak into focused context');
+    });
+
+    it('does not let a hygiene-excluded broad node re-enter on semantic similarity alone', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-hygiene-semantic-only',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/profile/global-admin',
+              value: 'Broad profile note with Memrok ranking, context selection, and injection themes stated as general background across projects.',
+            },
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/memrok/card-80',
+              value: 'Working on Memrok card 80 focused-context injection precision.',
+            },
+          ],
+        })
+      );
+      store.upsertNodeHygiene({
+        nodeKey: 'user/profile/global-admin',
+        state: 'suppressed',
+        action: 'exclude',
+        score: 0.9,
+        rationale: 'Broad node usually pollutes focused headers.',
+        reasonCodes: ['broad-bio-admin'],
+        source: 'test:hygiene',
+      });
+
+      const injector = createInjector(store);
+      const header = injector.assemble({
+        recentMessages: 'Memrok ranking regression in focused context injection and topic precision for card 80 patch debugging.',
+      });
+
+      const broadNode = (header.debugNodes ?? []).find((node) => node.key === 'user/profile/global-admin');
+      const topicalNode = (header.debugNodes ?? []).find((node) => node.key === 'user/memrok/card-80');
+
+      assert.ok(topicalNode, 'Focused node should still be present');
+      assert.equal(
+        broadNode,
+        undefined,
+        'Semantic resemblance without anchors, key overlap, or meaningful coverage should not override hygiene exclusion'
+      );
+    });
+
+    it('allows a hygiene-excluded broad node back in when the current query provides strong grounded evidence', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'p-hygiene-override',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'preference',
+              key: 'user/profile/global-admin',
+              value: 'Broad profile note: prefers biography framing and global admin summaries across projects.',
+            },
+          ],
+        })
+      );
+      store.upsertNodeHygiene({
+        nodeKey: 'user/profile/global-admin',
+        state: 'suppressed',
+        action: 'exclude',
+        score: 0.88,
+        rationale: 'Broad node usually pollutes focused headers.',
+        reasonCodes: ['broad-bio-admin'],
+        source: 'test:hygiene',
+      });
+
+      const injector = createInjector(store);
+      const header = injector.assemble({
+        recentMessages: 'Review the user profile global admin summary and biography framing preferences in the profile note.',
+      });
+
+      const broadNode = (header.debugNodes ?? []).find((node) => node.key === 'user/profile/global-admin');
+
+      assert.ok(broadNode, 'Strong grounded query evidence should override hygiene suppression');
+      assert.equal(broadNode?.hygieneAction, 'exclude');
+      assert.ok(
+        (broadNode?.keyTokenCoverage ?? 0) >= 3 || (broadNode?.queryCoverage ?? 0) >= 0.45,
+        'Override should come from grounded key/family overlap or meaningful query coverage'
+      );
+      assert.ok((broadNode?.scoreAdjustments.hygienePenalty ?? 0) > 0);
+      assert.ok((broadNode?.selectedBecause ?? []).includes('hygiene override'));
+    });
+
     it('excludes weakly grounded cross-domain user nodes in a Priomind-focused context', () => {
       store.applyPass(
         makePass({

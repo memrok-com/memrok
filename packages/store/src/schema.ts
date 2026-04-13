@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 
-const CURRENT_VERSION = 3;
+const CURRENT_VERSION = 4;
 
 const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -159,6 +159,48 @@ CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_mutation_id ON working
 `;
 
 function getCurrentVersion(db: DatabaseSync): number {
+const SCHEMA_V4 = `
+CREATE TABLE IF NOT EXISTS node_hygiene (
+    node_key      TEXT PRIMARY KEY,
+    state         TEXT NOT NULL,
+    action        TEXT NOT NULL,
+    score         REAL NOT NULL,
+    rationale     TEXT NOT NULL,
+    reason_codes  TEXT,
+    details       TEXT,
+    source        TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (state IN ('suppressed', 'deprioritized')),
+    CHECK (action IN ('exclude', 'deprioritize'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_hygiene_state ON node_hygiene(state);
+CREATE INDEX IF NOT EXISTS idx_node_hygiene_action ON node_hygiene(action);
+CREATE INDEX IF NOT EXISTS idx_node_hygiene_score ON node_hygiene(score DESC);
+
+CREATE TABLE IF NOT EXISTS node_hygiene_events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_key      TEXT NOT NULL,
+    event_type    TEXT NOT NULL,
+    state         TEXT,
+    action        TEXT,
+    score         REAL,
+    rationale     TEXT,
+    reason_codes  TEXT,
+    details       TEXT,
+    source        TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (event_type IN ('set', 'clear')),
+    CHECK (state IS NULL OR state IN ('suppressed', 'deprioritized')),
+    CHECK (action IS NULL OR action IN ('exclude', 'deprioritize'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_hygiene_events_node_key ON node_hygiene_events(node_key);
+CREATE INDEX IF NOT EXISTS idx_node_hygiene_events_created_at ON node_hygiene_events(created_at DESC);
+`;
+
+function getCurrentVersion(db: Database.Database): number {
   const row = db.prepare(
     'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1'
   ).get() as { version?: number } | undefined;
@@ -181,6 +223,7 @@ export function initSchema(db: DatabaseSync): void {
       'INSERT INTO schema_version (version, description) VALUES (?, ?)'
     ).run(1, 'Initial schema');
     db.exec(SCHEMA_V2);
+    db.exec(SCHEMA_V4);
     db.prepare(
       'INSERT INTO schema_version (version, description) VALUES (?, ?)'
     ).run(CURRENT_VERSION, 'Archive observations, derived artifacts, and working set traces with mutation provenance');
@@ -205,5 +248,11 @@ export function initSchema(db: DatabaseSync): void {
     db.prepare(
       'INSERT INTO schema_version (version, description) VALUES (?, ?)'
     ).run(3, 'Store working set mutation provenance');
+  }
+  if (currentVersion < 4) {
+    db.exec(SCHEMA_V4);
+    db.prepare(
+      'INSERT INTO schema_version (version, description) VALUES (?, ?)'
+    ).run(4, 'Add reversible node hygiene state and audit events');
   }
 }

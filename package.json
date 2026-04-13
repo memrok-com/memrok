@@ -1,6 +1,6 @@
 {
   "name": "memrok",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Memory with judgment. Graph-based curation layer for OpenClaw agents, complementing built-in recall and dreaming.",
   "workspaces": [
@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc --build",
     "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "hygiene:broad-nodes": "npx tsx scripts/hygiene-broad-nodes.ts"
   },
   "license": "MIT",
   "repository": {
