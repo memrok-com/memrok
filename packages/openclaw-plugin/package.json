@@ -36,7 +36,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "better-sqlite3": "^11.9.1",
     "chokidar": "^4.0.3"
   },
   "devDependencies": {
