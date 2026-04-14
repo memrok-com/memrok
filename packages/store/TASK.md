@@ -39,7 +39,7 @@ The store receives scribe pass output — JSON objects with this structure:
 Implement the store as a TypeScript package with these capabilities:
 
 ### 1. Database Setup
-- SQLite via `better-sqlite3`
+- SQLite via Node's built-in `node:sqlite`
 - Schema from `~/memrok/docs/graph-schema.md` — implement all tables: `mutations`, `nodes`, `passes`, `embeddings`, `weight_adjustments`, `config`, `schema_version`
 - Auto-create on first use, migration support via schema_version
 
@@ -94,7 +94,7 @@ Use an in-memory SQLite database (`:memory:`) for tests.
 ## Constraints
 
 - TypeScript, ESM modules (`"type": "module"` in package.json)
-- `better-sqlite3` as the only runtime dependency
+- No additional runtime dependency for SQLite; use Node's built-in `node:sqlite`
 - No ORM — raw SQL is fine and preferred for this
 - Keep it simple — this is a storage layer, not a framework
 - All timestamps in ISO 8601 UTC

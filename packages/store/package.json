@@ -9,11 +9,7 @@
     "build": "tsc",
     "test": "vitest run"
   },
-  "dependencies": {
-    "better-sqlite3": "^11.9.1"
-  },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "tsx": "^4.19.4",
     "typescript": "^5.8.2"
   }

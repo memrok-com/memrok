@@ -3,42 +3,147 @@
   "kind": "context-engine",
   "name": "Memrok Memory Layer",
   "description": "Memory with judgment. A graph-based curation layer for OpenClaw, complementing built-in recall and dreaming with explicit supersession, expiry, and topic-aware selection.",
+  "uiHints": {
+    "dbPath": {
+      "label": "Database Path",
+      "help": "Path to the Memrok SQLite database. Defaults under the active OpenClaw state directory at plugins/memrok/memrok.db."
+    },
+    "scribeProvider": {
+      "label": "Transcript Provider",
+      "help": "Optional provider override for transcript scribing. Leave empty to inherit OpenClaw's active default provider."
+    },
+    "scribeModel": {
+      "label": "Transcript Model",
+      "help": "Optional model override for transcript scribing. Leave empty to inherit OpenClaw's active default model."
+    },
+    "watchPaths": {
+      "label": "Watch Paths",
+      "help": "Additional transcript paths to watch. By default Memrok uses OpenClaw's configured session directories."
+    },
+    "bootstrap.enabled": {
+      "label": "Enable Bootstrap",
+      "help": "When enabled, seed the graph from Markdown memory files before normal transcript indexing."
+    },
+    "bootstrap.scanConfiguredAgents": {
+      "label": "Scan Configured Agents",
+      "help": "Include MEMORY.md and memory/ directories from discovered OpenClaw agent workspaces."
+    },
+    "bootstrap.memoryDirs": {
+      "label": "Extra Memory Dirs",
+      "help": "Additional Markdown memory directories to include in bootstrap scans."
+    },
+    "bootstrap.memoryIndexes": {
+      "label": "Extra Memory Indexes",
+      "help": "Additional MEMORY.md files to include in bootstrap scans."
+    },
+    "reflection.provider": {
+      "label": "Reflection Provider",
+      "help": "Optional provider override for reflective scribing. Leave empty to inherit the transcript/OpenClaw default provider."
+    },
+    "reflection.model": {
+      "label": "Reflection Model",
+      "help": "Optional model override for reflective scribing. Leave empty to inherit the transcript/OpenClaw default model."
+    }
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "dbPath": { "type": "string" },
-      "scribeProvider": { "type": "string" },
-      "scribeModel": { "type": "string" },
+      "dbPath": {
+        "type": "string",
+        "description": "Path to the Memrok SQLite database. Defaults under OPENCLAW_STATE_DIR/plugins/memrok/memrok.db."
+      },
+      "scribeProvider": {
+        "type": "string",
+        "description": "Optional provider override for transcript scribing. Leave unset to inherit OpenClaw's default provider."
+      },
+      "scribeModel": {
+        "type": "string",
+        "description": "Optional model override for transcript scribing. Leave unset to inherit OpenClaw's default model."
+      },
       "reflection": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "enabled": { "type": "boolean" },
-          "deltaPasses": { "type": "number" },
-          "cooldownHours": { "type": "number" },
-          "provider": { "type": "string" },
-          "model": { "type": "string" }
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable reflective scribing over the curated graph."
+          },
+          "deltaPasses": {
+            "type": "number",
+            "description": "Number of transcript scribe passes required before reflection is eligible."
+          },
+          "cooldownHours": {
+            "type": "number",
+            "description": "Minimum hours between reflective scribe runs."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Optional provider override for reflection. Leave unset to inherit transcript/OpenClaw defaults."
+          },
+          "model": {
+            "type": "string",
+            "description": "Optional model override for reflection. Leave unset to inherit transcript/OpenClaw defaults."
+          }
         }
       },
       "bootstrap": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "enabled": { "type": "boolean" },
-          "memoryDir": { "type": "string" },
-          "memoryIndex": { "type": "string" },
-          "maxAgeDays": { "type": "number" },
-          "delayMs": { "type": "number" }
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable bootstrap scans over Markdown memory sources."
+          },
+          "memoryDir": {
+            "type": "string",
+            "description": "Legacy single memory directory override."
+          },
+          "memoryDirs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Additional memory directories to include in bootstrap scans."
+          },
+          "memoryIndex": {
+            "type": "string",
+            "description": "Legacy single MEMORY.md override."
+          },
+          "memoryIndexes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Additional MEMORY.md files to include in bootstrap scans."
+          },
+          "scanConfiguredAgents": {
+            "type": "boolean",
+            "description": "Discover configured OpenClaw agent workspaces and scan their MEMORY.md and memory/ sources."
+          },
+          "maxAgeDays": {
+            "type": "number",
+            "description": "Skip Markdown memory files older than this age unless forced."
+          },
+          "delayMs": {
+            "type": "number",
+            "description": "Delay between bootstrap file scribe calls."
+          }
         }
       },
       "watchPaths": {
         "type": "array",
-        "items": { "type": "string" }
+        "items": { "type": "string" },
+        "description": "Additional transcript paths to watch. By default Memrok uses OpenClaw session directories."
       },
-      "deltaThreshold": { "type": "number" },
-      "idleMinutes": { "type": "number" },
-      "tokenBudget": { "type": "number" }
+      "deltaThreshold": {
+        "type": "number",
+        "description": "Message threshold before consolidation is eligible."
+      },
+      "idleMinutes": {
+        "type": "number",
+        "description": "Idle time required before transcript scribing runs."
+      },
+      "tokenBudget": {
+        "type": "number",
+        "description": "Maximum token budget for Memrok's injected context header."
+      }
     }
   }
 }

@@ -1,4 +1,5 @@
-import Database from 'better-sqlite3';
+import { createRequire } from 'node:module';
+import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite';
 import { initSchema } from './schema.js';
 import type {
   Store,
@@ -24,11 +25,33 @@ import type {
   UpsertNodeHygieneInput,
 } from './types.js';
 
+const require = createRequire(import.meta.url);
+const nodeSqliteSpecifier = 'node:sqlite';
+const sqliteModule = (process.getBuiltinModule?.('sqlite') as typeof import('node:sqlite') | undefined)
+  ?? (require(nodeSqliteSpecifier) as typeof import('node:sqlite'));
+const { DatabaseSync: DatabaseSyncRuntime } = sqliteModule;
+
 export function createStore(dbPath: string): Store {
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  const db = new DatabaseSyncRuntime(dbPath);
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
   initSchema(db);
+
+  function withTransaction<T>(fn: () => T): T {
+    db.exec('BEGIN');
+    try {
+      const result = fn();
+      db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {
+        // Ignore rollback errors and preserve the original failure.
+      }
+      throw error;
+    }
+  }
 
   function parseJson<T>(value: string | null): T | null {
     if (!value) return null;
@@ -39,7 +62,15 @@ export function createStore(dbPath: string): Store {
     return value === undefined ? null : JSON.stringify(value);
   }
 
-  function mapArchiveObservation(row: Record<string, unknown> | undefined): ArchiveObservation | null {
+  function asRow(value: unknown): Record<string, SQLOutputValue> | undefined {
+    return value as Record<string, SQLOutputValue> | undefined;
+  }
+
+  function asRows(value: unknown): Array<Record<string, SQLOutputValue>> {
+    return value as Array<Record<string, SQLOutputValue>>;
+  }
+
+  function mapArchiveObservation(row: Record<string, SQLOutputValue> | undefined): ArchiveObservation | null {
     if (!row) return null;
     return {
       id: row.id as number,
@@ -52,7 +83,7 @@ export function createStore(dbPath: string): Store {
     };
   }
 
-  function mapDerivedArtifact(row: Record<string, unknown> | undefined): DerivedArtifact | null {
+  function mapDerivedArtifact(row: Record<string, SQLOutputValue> | undefined): DerivedArtifact | null {
     if (!row) return null;
     return {
       id: row.id as number,
@@ -64,7 +95,7 @@ export function createStore(dbPath: string): Store {
     };
   }
 
-  function mapWorkingSetSnapshot(row: Record<string, unknown> | undefined): WorkingSetSnapshot | null {
+  function mapWorkingSetSnapshot(row: Record<string, SQLOutputValue> | undefined): WorkingSetSnapshot | null {
     if (!row) return null;
     return {
       id: row.id as number,
@@ -77,7 +108,7 @@ export function createStore(dbPath: string): Store {
     };
   }
 
-  function mapWorkingSetSnapshotItem(row: Record<string, unknown>): WorkingSetSnapshotItem {
+  function mapWorkingSetSnapshotItem(row: Record<string, SQLOutputValue>): WorkingSetSnapshotItem {
     return {
       id: row.id as number,
       snapshot_id: row.snapshot_id as number,
@@ -424,7 +455,7 @@ export function createStore(dbPath: string): Store {
     return 'noop';
   }
 
-  const applyPassTx = db.transaction((pass: ScribePass): ApplyResult => {
+  const applyPassTx = (pass: ScribePass): ApplyResult => withTransaction(() => {
     const timestamp = now();
     let nodesCreated = 0;
     let nodesUpdated = 0;
@@ -475,7 +506,7 @@ export function createStore(dbPath: string): Store {
 
   function queryNodes(filter?: NodeFilter): Node[] {
     const conditions: string[] = [];
-    const params: Record<string, unknown> = {};
+    const params: Record<string, SQLInputValue> = {};
 
     const active = filter?.active ?? true;
     if (active) {
@@ -498,6 +529,10 @@ export function createStore(dbPath: string): Store {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    return asRows(db.prepare(`SELECT * FROM nodes ${where} ORDER BY key`).all(params)) as unknown as Node[];
+  }
+
+  const createWorkingSetSnapshotTx = (
     return db.prepare(`${NODE_WITH_HYGIENE_SELECT} ${where} ORDER BY nodes.key`)
       .all(params)
       .map((row) => mapNode(row as Record<string, unknown>)!)
@@ -550,7 +585,7 @@ export function createStore(dbPath: string): Store {
   const createWorkingSetSnapshotTx = db.transaction((
     input: CreateWorkingSetSnapshotInput,
     retention?: WorkingSetRetentionPolicy,
-  ): WorkingSetSnapshotTrace => {
+  ): WorkingSetSnapshotTrace => withTransaction(() => {
     const result = insertWorkingSetSnapshot.run({
       session_id: input.sessionId ?? null,
       query: input.query ?? null,
@@ -582,10 +617,10 @@ export function createStore(dbPath: string): Store {
       }
     }
 
-    const snapshot = mapWorkingSetSnapshot(getWorkingSetSnapshotById.get(snapshotId) as Record<string, unknown>)!;
+    const snapshot = mapWorkingSetSnapshot(asRow(getWorkingSetSnapshotById.get(snapshotId)))!;
     const items = getWorkingSetSnapshotItemsById
       .all(snapshotId)
-      .map((row) => mapWorkingSetSnapshotItem(row as Record<string, unknown>));
+      .map((row: Record<string, SQLOutputValue>) => mapWorkingSetSnapshotItem(row));
     return { ...snapshot, items };
   });
 
@@ -596,19 +631,19 @@ export function createStore(dbPath: string): Store {
     }
 
     const artifact = pass.derived_artifact_id
-      ? mapDerivedArtifact(getDerivedArtifactById.get(pass.derived_artifact_id) as Record<string, unknown>)
+      ? mapDerivedArtifact(asRow(getDerivedArtifactById.get(pass.derived_artifact_id)))
       : null;
     const observation = artifact?.observation_id
-      ? mapArchiveObservation(getArchiveObservationById.get(artifact.observation_id) as Record<string, unknown>)
+      ? mapArchiveObservation(asRow(getArchiveObservationById.get(artifact.observation_id)))
       : null;
 
     return { observation, artifact, pass };
   }
 
   function rebuild(): void {
-    const rebuildTx = db.transaction(() => {
+    withTransaction(() => {
       db.exec('DELETE FROM nodes');
-      const mutations = getAllMutationsOrdered.all() as Mutation[];
+      const mutations = asRows(getAllMutationsOrdered.all()) as unknown as Mutation[];
       for (const mut of mutations) {
         applyMutationToNode(
           {
@@ -629,7 +664,6 @@ export function createStore(dbPath: string): Store {
         );
       }
     });
-    rebuildTx();
   }
 
   return {
@@ -642,16 +676,16 @@ export function createStore(dbPath: string): Store {
         metadata: serializeJson(input.metadata),
       });
       return mapArchiveObservation(
-        getArchiveObservationById.get(Number(result.lastInsertRowid)) as Record<string, unknown>
+        asRow(getArchiveObservationById.get(Number(result.lastInsertRowid)))
       )!;
     },
     listArchiveObservations: (limit = 100) =>
       listArchiveObservationRows
         .all(limit)
-        .map((row) => mapArchiveObservation(row as Record<string, unknown>)!)
+        .map((row: Record<string, SQLOutputValue>) => mapArchiveObservation(row)!)
         .filter(Boolean),
     getArchiveObservation: (id: number) =>
-      mapArchiveObservation(getArchiveObservationById.get(id) as Record<string, unknown>),
+      mapArchiveObservation(asRow(getArchiveObservationById.get(id))),
     createDerivedArtifact: (input: CreateDerivedArtifactInput) => {
       const result = insertDerivedArtifact.run({
         kind: input.kind,
@@ -660,18 +694,21 @@ export function createStore(dbPath: string): Store {
         metadata: serializeJson(input.metadata),
       });
       return mapDerivedArtifact(
-        getDerivedArtifactById.get(Number(result.lastInsertRowid)) as Record<string, unknown>
+        asRow(getDerivedArtifactById.get(Number(result.lastInsertRowid)))
       )!;
     },
     listDerivedArtifacts: (limit = 100) =>
       listDerivedArtifactRows
         .all(limit)
-        .map((row) => mapDerivedArtifact(row as Record<string, unknown>)!)
+        .map((row: Record<string, SQLOutputValue>) => mapDerivedArtifact(row)!)
         .filter(Boolean),
     getDerivedArtifact: (id: number) =>
-      mapDerivedArtifact(getDerivedArtifactById.get(id) as Record<string, unknown>),
+      mapDerivedArtifact(asRow(getDerivedArtifactById.get(id))),
     applyPass: (pass: ScribePass) => applyPassTx(pass),
     queryNodes,
+    getNode: (key: string) => (asRow(getNodeByKey.get(key)) as unknown as Node) ?? null,
+    getHistory: (key: string) => asRows(getMutationsByKey.all(key)) as unknown as Mutation[],
+    listPasses: () => asRows(getAllPasses.all()) as unknown as Pass[],
     getNode: (key: string) => mapNode(getNodeByKey.get(key) as Record<string, unknown>),
     getHistory: (key: string) => getMutationsByKey.all(key) as Mutation[],
     getNodeHygiene: (key: string) =>
@@ -697,19 +734,19 @@ export function createStore(dbPath: string): Store {
     listWorkingSetSnapshots: (limit = 50) =>
       listWorkingSetSnapshotRows
         .all(limit)
-        .map((row) => mapWorkingSetSnapshot(row as Record<string, unknown>)!)
+        .map((row: Record<string, SQLOutputValue>) => mapWorkingSetSnapshot(row)!)
         .filter(Boolean),
     getWorkingSetSnapshot: (id: number) => {
-      const snapshot = mapWorkingSetSnapshot(getWorkingSetSnapshotById.get(id) as Record<string, unknown>);
+      const snapshot = mapWorkingSetSnapshot(asRow(getWorkingSetSnapshotById.get(id)));
       if (!snapshot) return null;
       const items = getWorkingSetSnapshotItemsById
         .all(id)
-        .map((row) => mapWorkingSetSnapshotItem(row as Record<string, unknown>));
+        .map((row: Record<string, SQLOutputValue>) => mapWorkingSetSnapshotItem(row));
       return { ...snapshot, items };
     },
     getProvenanceForPass,
     getProvenanceForWorkingSetSnapshot: (snapshotId: number) => {
-      const items = getWorkingSetSnapshotItemsById.all(snapshotId) as Array<Record<string, unknown>>;
+      const items = asRows(getWorkingSetSnapshotItemsById.all(snapshotId));
       const seenMutations = new Set<number>();
       const seenPasses = new Set<string>();
       const links: ProvenanceLink[] = [];

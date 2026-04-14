@@ -19,7 +19,6 @@ import type {
   ResolvedReflectionConfig,
 } from './types.js';
 
-const DEFAULT_DB_PATH = '~/.memrok/memrok.db';
 const DEFAULT_DELTA_THRESHOLD = 20;
 const DEFAULT_IDLE_MINUTES = 15;
 const DEFAULT_TOKEN_BUDGET = 1000;
@@ -30,11 +29,72 @@ const DEFAULT_REFLECTION_CHECK_INTERVAL_MS = 60_000;
 const DEFAULT_BOOTSTRAP_ENABLED = false;
 const DEFAULT_BOOTSTRAP_MAX_AGE_DAYS = 90;
 const DEFAULT_BOOTSTRAP_DELAY_MS = 10_000;
+const DEFAULT_BOOTSTRAP_SCAN_CONFIGURED_AGENTS = true;
+const DEFAULT_INDEX_SESSION_LIMIT = 100;
+const DEFAULT_FULL_REINDEX_LIMIT = 25;
 
 function expandHome(input: string): string {
   if (input === '~') return homedir();
   if (input.startsWith('~/')) return resolve(homedir(), input.slice(2));
   return resolve(input);
+}
+
+function resolveOpenclawStateDir(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = env.OPENCLAW_STATE_DIR?.trim();
+  return explicit ? expandHome(explicit) : join(homedir(), '.openclaw');
+}
+
+function resolveMemrokDataDir(api?: PluginApi): string {
+  const runtimeAgent = toRecord(api?.runtime?.agent);
+  const explicitStateDir = typeof runtimeAgent?.stateDir === 'string' ? runtimeAgent.stateDir : undefined;
+  const stateDir = explicitStateDir?.trim()
+    ? expandHome(explicitStateDir)
+    : resolveOpenclawStateDir();
+  return join(stateDir, 'plugins', 'memrok');
+}
+
+function resolveMemrokTmpDir(api?: PluginApi): string {
+  return join(resolveMemrokDataDir(api), 'tmp');
+}
+
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => typeof entry === 'string' ? entry.trim() : '')
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function resolvePluginConfig(
+  raw: MemrokPluginConfig | Record<string, unknown> | undefined,
+  api?: PluginApi,
+): MemrokPluginConfig {
+  if (raw && Object.keys(raw).length > 0) {
+    return raw as MemrokPluginConfig;
+  }
+
+  const rootConfig = toRecord(api?.config);
+  const plugins = toRecord(rootConfig?.plugins);
+  const entries = toRecord(plugins?.entries);
+  const pluginEntry = toRecord(entries?.memrok);
+  return (toRecord(pluginEntry?.config) ?? {}) as MemrokPluginConfig;
+}
+
+function normalizeFileKey(filePath: string): string {
+  return resolve(filePath);
 }
 
 function extractText(content: Message['content']): string {
@@ -65,6 +125,11 @@ function recentContextFromMessages(messages: Message[]): string {
 }
 
 function defaultWatchPaths(api: PluginApi): string[] {
+  const discoveredSessionDirs = discoverSessionDirs(api);
+  if (discoveredSessionDirs.length > 0) {
+    return discoveredSessionDirs;
+  }
+
   const agent = api.runtime?.agent;
   if (Array.isArray(agent?.sessionDirs) && agent.sessionDirs.length > 0) {
     return agent.sessionDirs.map(expandHome);
@@ -72,12 +137,112 @@ function defaultWatchPaths(api: PluginApi): string[] {
   if (agent?.sessionsDir) {
     return [expandHome(agent.sessionsDir)];
   }
-  return [join(homedir(), '.openclaw', 'agents')];
+  return [join(resolveOpenclawStateDir(), 'agents')];
 }
 
-/** Remove stale memrok-scribe-*.jsonl files from ~/.memrok/tmp/ on startup. */
-function cleanupStaleTmpFiles(): void {
-  const tmpDir = join(homedir(), '.memrok', 'tmp');
+function discoverSessionDirs(api: PluginApi): string[] {
+  const sessionDirs = new Set<string>();
+  const addSessionDir = (candidate: string | undefined) => {
+    const trimmed = candidate?.trim();
+    if (!trimmed) return;
+    sessionDirs.add(expandHome(trimmed));
+  };
+
+  const runtimeAgent = api.runtime?.agent;
+  for (const sessionDir of runtimeAgent?.sessionDirs ?? []) {
+    addSessionDir(sessionDir);
+  }
+  addSessionDir(runtimeAgent?.sessionsDir);
+
+  const agentsDir = join(resolveOpenclawStateDir(), 'agents');
+  try {
+    const entries = readdirSync(agentsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const candidate = join(agentsDir, entry.name, 'sessions');
+      if (existsSync(candidate)) {
+        sessionDirs.add(candidate);
+      }
+    }
+  } catch {
+    // Fall back to runtime-provided session directories if the state dir layout
+    // is unavailable in this environment.
+  }
+
+  return [...sessionDirs].sort();
+}
+
+function resolveSessionReplayPaths(api: PluginApi, configuredWatchPaths: string[]): string[] {
+  const discoveredSessionDirs = discoverSessionDirs(api);
+  if (discoveredSessionDirs.length > 0) {
+    return discoveredSessionDirs;
+  }
+
+  const broadFallback = join(resolveOpenclawStateDir(), 'agents');
+  return configuredWatchPaths
+    .map(expandHome)
+    .filter((watchPath) => watchPath !== broadFallback);
+}
+
+function discoverAgentRoots(api: PluginApi, workspaceDir: string): string[] {
+  const roots = new Set<string>();
+  const fallbacks = new Set<string>();
+
+  const addRoot = (candidate: string | undefined) => {
+    const trimmed = candidate?.trim();
+    if (!trimmed) return;
+    roots.add(expandHome(trimmed));
+  };
+
+  const addFallbackRoot = (candidate: string | undefined) => {
+    const trimmed = candidate?.trim();
+    if (!trimmed) return;
+    fallbacks.add(expandHome(trimmed));
+  };
+
+  const addSessionPath = (candidate: string | undefined) => {
+    const trimmed = candidate?.trim();
+    if (!trimmed) return;
+    const resolved = expandHome(trimmed);
+    if (basename(resolved) === 'sessions') {
+      roots.add(dirname(resolved));
+      return;
+    }
+    roots.add(resolved);
+  };
+
+  const runtimeAgent = api.runtime?.agent;
+  for (const sessionDir of runtimeAgent?.sessionDirs ?? []) {
+    addSessionPath(sessionDir);
+  }
+  addSessionPath(runtimeAgent?.sessionsDir);
+  addFallbackRoot(runtimeAgent?.resolveAgentWorkspaceDir?.(api.config));
+  addFallbackRoot(workspaceDir);
+
+  const agentsDir = join(resolveOpenclawStateDir(), 'agents');
+  try {
+    const entries = readdirSync(agentsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        roots.add(join(agentsDir, entry.name));
+      }
+    }
+  } catch {
+    // No global agent registry available — fall back to runtime-discovered roots.
+  }
+
+  if (roots.size === 0) {
+    for (const fallback of fallbacks) {
+      roots.add(fallback);
+    }
+  }
+
+  return [...roots].sort();
+}
+
+/** Remove stale memrok-scribe-*.jsonl files from the plugin temp directory on startup. */
+function cleanupStaleTmpFiles(api?: PluginApi): void {
+  const tmpDir = resolveMemrokTmpDir(api);
   try {
     const entries = readdirSync(tmpDir);
     let cleaned = 0;
@@ -101,7 +266,7 @@ export function resolveConfig(
   raw: MemrokPluginConfig | Record<string, unknown> | undefined,
   api?: PluginApi,
 ): ResolvedConfig {
-  const config = (raw ?? {}) as MemrokPluginConfig;
+  const config = resolvePluginConfig(raw, api);
   const scribeProvider = config.scribeProvider;
   const scribeModel = config.scribeModel;
   const reflection: ResolvedReflectionConfig = {
@@ -114,12 +279,21 @@ export function resolveConfig(
   const bootstrap: ResolvedBootstrapConfig = {
     enabled: config.bootstrap?.enabled ?? DEFAULT_BOOTSTRAP_ENABLED,
     memoryDir: config.bootstrap?.memoryDir,
+    memoryDirs: [
+      ...toStringArray(config.bootstrap?.memoryDirs),
+      ...toStringArray(config.bootstrap?.memoryDir),
+    ],
     memoryIndex: config.bootstrap?.memoryIndex,
+    memoryIndexes: [
+      ...toStringArray(config.bootstrap?.memoryIndexes),
+      ...toStringArray(config.bootstrap?.memoryIndex),
+    ],
+    scanConfiguredAgents: config.bootstrap?.scanConfiguredAgents ?? DEFAULT_BOOTSTRAP_SCAN_CONFIGURED_AGENTS,
     maxAgeDays: config.bootstrap?.maxAgeDays ?? DEFAULT_BOOTSTRAP_MAX_AGE_DAYS,
     delayMs: config.bootstrap?.delayMs ?? DEFAULT_BOOTSTRAP_DELAY_MS,
   };
   return {
-    dbPath: expandHome(config.dbPath ?? DEFAULT_DB_PATH),
+    dbPath: expandHome(config.dbPath ?? join(resolveMemrokDataDir(api), 'memrok.db')),
     scribeProvider,
     scribeModel,
     watchPaths: (config.watchPaths?.length ? config.watchPaths : defaultWatchPaths(api as PluginApi)).map(expandHome),
@@ -175,7 +349,7 @@ export function createModelCaller(api: PluginApi, config: ResolvedConfig, inputL
       throw new Error('api.runtime.agent.runEmbeddedPiAgent not available');
     }
 
-    const tmpDir = join(homedir(), '.memrok', 'tmp');
+    const tmpDir = resolveMemrokTmpDir(api);
     mkdirSync(tmpDir, { recursive: true });
     const sessionId = `memrok-scribe-${Date.now()}`;
     const sessionFile = join(tmpDir, `${sessionId}.jsonl`);
@@ -195,8 +369,8 @@ export function createModelCaller(api: PluginApi, config: ResolvedConfig, inputL
         prompt: fullPrompt,
         timeoutMs: 60_000,
         runId: `memrok-scribe-${Date.now()}`,
-        provider: config.scribeProvider,
-        model: config.scribeModel,
+        ...(config.scribeProvider ? { provider: config.scribeProvider } : {}),
+        ...(config.scribeModel ? { model: config.scribeModel } : {}),
         disableTools: true,
       });
     } finally {
@@ -247,34 +421,189 @@ function scanMarkdownFiles(dir: string): string[] {
   return results.sort();
 }
 
+function scanJsonlFiles(dir: string): string[] {
+  const results: string[] = [];
+  function walk(d: string): void {
+    let entries;
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = join(d, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.isFile() && extname(entry.name) === '.jsonl') {
+        results.push(fullPath);
+      }
+    }
+  }
+  walk(dir);
+  return results.sort();
+}
+
+function resolveBootstrapTargets(
+  bootstrapConfig: ResolvedBootstrapConfig,
+  api: PluginApi,
+  workspaceDir: string,
+): { memoryDirs: string[]; memoryIndexes: string[] } {
+  const memoryDirs = new Set<string>();
+  const memoryIndexes = new Set<string>();
+
+  for (const candidate of bootstrapConfig.memoryDirs) {
+    memoryDirs.add(expandHome(candidate));
+  }
+  for (const candidate of bootstrapConfig.memoryIndexes) {
+    memoryIndexes.add(expandHome(candidate));
+  }
+
+  if (bootstrapConfig.scanConfiguredAgents) {
+    for (const agentRoot of discoverAgentRoots(api, workspaceDir)) {
+      memoryDirs.add(join(agentRoot, 'memory'));
+      memoryIndexes.add(join(agentRoot, 'MEMORY.md'));
+    }
+  }
+
+  if (memoryDirs.size === 0 && memoryIndexes.size === 0) {
+    memoryDirs.add(bootstrapConfig.memoryDir
+      ? expandHome(bootstrapConfig.memoryDir)
+      : join(workspaceDir, 'memory'));
+    memoryIndexes.add(bootstrapConfig.memoryIndex
+      ? expandHome(bootstrapConfig.memoryIndex)
+      : join(workspaceDir, 'MEMORY.md'));
+  }
+
+  return {
+    memoryDirs: [...memoryDirs].sort(),
+    memoryIndexes: [...memoryIndexes].sort(),
+  };
+}
+
+function formatTimestamp(value: string | null | undefined): string {
+  return value ? new Date(value).toISOString() : 'never';
+}
+
+type MemrokCommand =
+  | { kind: 'status' }
+  | { kind: 'scan-memory'; force: boolean }
+  | { kind: 'flush-sessions' }
+  | { kind: 'index-sessions'; full: boolean; limit?: number }
+  | { kind: 'help'; error?: string };
+
+function parseCommandArgs(rawArgs: string | undefined): MemrokCommand {
+  const tokens = (rawArgs ?? '')
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  if (tokens.length === 0 || tokens[0] === 'status') {
+    return tokens.length <= 1
+      ? { kind: 'status' }
+      : { kind: 'help', error: '`/memrok status` does not accept extra arguments.' };
+  }
+
+  if (tokens[0] === 'scan-memory' || tokens[0] === 'bootstrap') {
+    const force = tokens.slice(1).includes('force');
+    const unexpected = tokens.slice(1).filter((token) => token !== 'force');
+    return unexpected.length === 0
+      ? { kind: 'scan-memory', force }
+      : { kind: 'help', error: '`/memrok scan-memory` accepts only the optional `force` flag.' };
+  }
+
+  if (tokens[0] === 'flush-sessions' || tokens[0] === 'trigger') {
+    return tokens.length === 1
+      ? { kind: 'flush-sessions' }
+      : { kind: 'help', error: '`/memrok flush-sessions` does not accept extra arguments.' };
+  }
+
+  if (tokens[0] === 'index-sessions' || tokens[0] === 'reindex-sessions') {
+    let full = false;
+    let limit: number | undefined;
+    const unexpected: string[] = [];
+
+    for (let i = 1; i < tokens.length; i++) {
+      const token = tokens[i]!;
+      if (token === 'full') {
+        full = true;
+        continue;
+      }
+      if (token === 'limit' && i + 1 < tokens.length) {
+        const value = Number.parseInt(tokens[i + 1]!, 10);
+        if (Number.isFinite(value) && value > 0) {
+          limit = value;
+          i++;
+          continue;
+        }
+      }
+      if (token.startsWith('limit=')) {
+        const value = Number.parseInt(token.slice('limit='.length), 10);
+        if (Number.isFinite(value) && value > 0) {
+          limit = value;
+          continue;
+        }
+      }
+      unexpected.push(token);
+    }
+
+    return unexpected.length === 0
+      ? { kind: 'index-sessions', full, limit }
+      : { kind: 'help', error: '`/memrok index-sessions` accepts optional `full` and `limit=<n>` flags.' };
+  }
+
+  if (tokens[0] === 'help') {
+    return { kind: 'help' };
+  }
+
+  return {
+    kind: 'help',
+    error: `Unknown subcommand \`${tokens[0]}\`. Supported: status, scan-memory, flush-sessions, index-sessions, help.`,
+  };
+}
+
+function buildHelpText(error?: string): string {
+  const lines = [
+    '**Memrok**',
+    'Commands:',
+    '- `/memrok status` show recent Memrok activity and discovered targets',
+    '- `/memrok scan-memory [force]` scan configured `MEMORY.md` and `memory/` files now',
+    '- `/memrok flush-sessions` run transcript scribing immediately for pending session changes',
+    '- `/memrok index-sessions [full] [limit=<n>]` index session JSONL files now; `full` replays complete files',
+    '- `/memrok help` show this help',
+  ];
+  return error ? [`Error: ${error}`, '', ...lines].join('\n') : lines.join('\n');
+}
+
 export async function runBootstrap(
   store: ArchiveStore & ArtifactStore & GraphStore,
   scribe: ScribeInterface,
   bootstrapConfig: ResolvedBootstrapConfig,
+  api: PluginApi,
   workspaceDir: string,
-): Promise<void> {
-  const memoryDir = bootstrapConfig.memoryDir
-    ? expandHome(bootstrapConfig.memoryDir)
-    : join(workspaceDir, 'memory');
-  const memoryIndex = bootstrapConfig.memoryIndex
-    ? expandHome(bootstrapConfig.memoryIndex)
-    : join(workspaceDir, 'MEMORY.md');
+  options?: { force?: boolean },
+): Promise<{ filesConsidered: number; processed: number; skipped: number; failed: number }> {
+  const targets = resolveBootstrapTargets(bootstrapConfig, api, workspaceDir);
+  const force = options?.force ?? false;
 
-  // Collect candidate files
   const filePaths: string[] = [];
-  if (existsSync(memoryDir)) {
-    filePaths.push(...scanMarkdownFiles(memoryDir));
+  for (const memoryDir of targets.memoryDirs) {
+    if (existsSync(memoryDir)) {
+      filePaths.push(...scanMarkdownFiles(memoryDir));
+    }
   }
-  if (existsSync(memoryIndex) && !filePaths.includes(memoryIndex)) {
-    filePaths.push(memoryIndex);
+  for (const memoryIndex of targets.memoryIndexes) {
+    if (existsSync(memoryIndex) && !filePaths.includes(memoryIndex)) {
+      filePaths.push(memoryIndex);
+    }
   }
 
   if (filePaths.length === 0) {
     console.log('[memrok:bootstrap] No memory files found, skipping');
-    return;
+    return { filesConsidered: 0, processed: 0, skipped: 0, failed: 0 };
   }
 
-  // Build set of already-bootstrapped filenames from pass sources
+  // Build set of already-bootstrapped filenames from pass sources.
   const existingPasses = store.listPasses();
   const bootstrappedFiles = new Set<string>(
     existingPasses
@@ -292,30 +621,27 @@ export async function runBootstrap(
   let failed = 0;
 
   for (const filePath of filePaths) {
-    const fileKey = relative(workspaceDir, filePath);
+    const fileKey = normalizeFileKey(filePath);
+    const legacyFileKey = relative(workspaceDir, filePath);
 
-    // Skip already bootstrapped
-    if (bootstrappedFiles.has(fileKey)) {
+    if (!force && (bootstrappedFiles.has(fileKey) || bootstrappedFiles.has(legacyFileKey))) {
       console.log(`[memrok:bootstrap] Skipping ${fileKey} (already bootstrapped)`);
       skipped++;
       continue;
     }
 
-    // Skip files older than maxAgeDays
     try {
       const stat = statSync(filePath);
-      if (now - stat.mtimeMs > maxAgeMs) {
+      if (!force && now - stat.mtimeMs > maxAgeMs) {
         console.log(`[memrok:bootstrap] Skipping ${fileKey} (older than ${bootstrapConfig.maxAgeDays} days)`);
         skipped++;
         continue;
       }
     } catch {
-      // If we can't stat, skip
       skipped++;
       continue;
     }
 
-    // Read content
     let content: string;
     try {
       content = readFileSync(filePath, 'utf-8');
@@ -330,7 +656,6 @@ export async function runBootstrap(
       continue;
     }
 
-    // Run through scribe
     try {
       const pass = await scribe.callModel(content);
       const result = persistObservationDrivenPass({
@@ -359,13 +684,13 @@ export async function runBootstrap(
       continue;
     }
 
-    // Rate limit between files (skip delay after last file)
     if (bootstrapConfig.delayMs > 0 && filePath !== filePaths[filePaths.length - 1]) {
       await new Promise((resolve) => setTimeout(resolve, bootstrapConfig.delayMs));
     }
   }
 
   console.log(`[memrok:bootstrap] Done: ${processed} processed, ${skipped} skipped, ${failed} failed`);
+  return { filesConsidered: filePaths.length, processed, skipped, failed };
 }
 
 export interface PluginRuntimeState {
@@ -373,6 +698,20 @@ export interface PluginRuntimeState {
   injector: Injector;
   watcher: TranscriptWatcher;
   consolidation: ConsolidationEngine;
+  status: StatusTracker;
+  config: ResolvedConfig;
+  scanMemory(force?: boolean): Promise<{ filesConsidered: number; processed: number; skipped: number; failed: number }>;
+  flushPendingSessions(): Promise<number>;
+  indexSessionFiles(options?: { full?: boolean; limit?: number }): Promise<{
+    filesConsidered: number;
+    unreadCandidates: number;
+    processed: number;
+    skipped: number;
+    failed: number;
+    remaining: number;
+    limitApplied: number;
+  }>;
+  describeBootstrapTargets(): { memoryDirs: string[]; memoryIndexes: string[] };
 }
 
 export function createContextEngine(runtime: PluginRuntimeState): ContextEngine {
@@ -467,6 +806,7 @@ export async function runReflectionPass(params: {
 
 export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
   const config = resolveConfig(api.pluginConfig, api);
+  cleanupStaleTmpFiles(api);
   mkdirSync(dirname(config.dbPath), { recursive: true });
   const store = createStore(config.dbPath);
   const status = new StatusTracker(config.dbPath);
@@ -495,14 +835,27 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     { systemPrompt: REFLECTION_SYSTEM_PROMPT },
   );
 
-  const watcher = new TranscriptWatcher({ paths: config.watchPaths });
+  const watcher = new TranscriptWatcher(
+    { paths: config.watchPaths },
+    join(dirname(config.dbPath), '.memrok-cursors.json'),
+  );
   const consolidation = new ConsolidationEngine({
     deltaThreshold: config.deltaThreshold,
     idleMinutes: config.idleMinutes,
   });
-  const pendingTranscriptChunks: string[] = [];
-  let lastSourceProcessed: string | null = null;
+  const pendingTranscriptChunks: Array<{ source: string; content: string }> = [];
   let reflectionCheckTimer: ReturnType<typeof setInterval> | null = null;
+  let sessionIndexRunInFlight: Promise<{
+    filesConsidered: number;
+    unreadCandidates: number;
+    processed: number;
+    skipped: number;
+    failed: number;
+    remaining: number;
+    limitApplied: number;
+  }> | null = null;
+  const resolveWorkspaceDir = () =>
+    api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config) ?? process.cwd();
 
   // Reflection state — recover from DB so restarts don't reset the counters
   const allPasses = store.listPasses();
@@ -518,6 +871,10 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     if (reflectionRunInFlight) {
       return reflectionRunInFlight;
     }
+    // TODO: Investigate why the periodic reflection timer path does not reliably
+    // trigger in the fake-timer test case (`runs reflection from the timer after
+    // cooldown elapses without a new transcript pass`). Install/load behavior is
+    // correct, but the timer-driven test still fails intermittently.
     if (!shouldRunReflection(passesSinceReflection, lastReflectionTime, config.reflection)) return;
     reflectionRunInFlight = (async () => {
       try {
@@ -533,18 +890,20 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     return reflectionRunInFlight;
   };
 
-  const runScribePass = async () => {
-    if (pendingTranscriptChunks.length === 0) return;
-    const transcript = pendingTranscriptChunks.join('\n');
+  const runTranscriptScribeForSource = async (
+    source: string,
+    transcript: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> => {
     try {
       const pass = await scribe.callModel(transcript);
       persistObservationDrivenPass({
         store,
         observation: {
           kind: 'transcript',
-          source: lastSourceProcessed ?? 'transcript',
+          source,
           content: transcript,
-          metadata: { chunkCount: pendingTranscriptChunks.length },
+          metadata,
         },
         artifact: {
           kind: 'scribe-pass-output',
@@ -552,12 +911,11 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
           metadata: { stage: 'transcript-scribe' },
         },
         pass,
-        source: lastSourceProcessed ?? 'transcript',
+        source,
       });
-      pendingTranscriptChunks.length = 0;
       injector.invalidate();
       passesSinceReflection++;
-      status.recordTranscriptScribe(lastSourceProcessed);
+      status.recordTranscriptScribe(source);
       status.setNodeLifecycleCounts(
         store.queryNodes({ active: true }).length,
         store.queryNodes({ active: false }).length,
@@ -570,18 +928,249 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     }
   };
 
+  const runScribePass = async (): Promise<number> => {
+    if (pendingTranscriptChunks.length === 0) return 0;
+    const drainedChunks = pendingTranscriptChunks.splice(0, pendingTranscriptChunks.length);
+    const transcript = drainedChunks.map((chunk) => chunk.content).join('\n');
+    const source = drainedChunks[drainedChunks.length - 1]?.source ?? 'transcript';
+    const chunkCount = drainedChunks.length;
+
+    try {
+      await runTranscriptScribeForSource(source, transcript, { chunkCount });
+    } catch (err) {
+      pendingTranscriptChunks.unshift(...drainedChunks);
+      throw err;
+    }
+
+    return 1;
+  };
+
+  const indexSessionFiles = async (
+    options?: { full?: boolean; limit?: number },
+  ): Promise<{
+    filesConsidered: number;
+    unreadCandidates: number;
+    processed: number;
+    skipped: number;
+    failed: number;
+    remaining: number;
+    limitApplied: number;
+  }> => {
+    if (sessionIndexRunInFlight) {
+      return sessionIndexRunInFlight;
+    }
+
+    sessionIndexRunInFlight = (async () => {
+      const full = options?.full ?? false;
+      const requestedLimit = options?.limit;
+      const limitApplied = Math.max(
+        1,
+        requestedLimit ?? (full ? DEFAULT_FULL_REINDEX_LIMIT : DEFAULT_INDEX_SESSION_LIMIT),
+      );
+      const filePaths = new Set<string>();
+      const replayPaths = resolveSessionReplayPaths(api, config.watchPaths);
+
+      for (const watchPath of replayPaths) {
+        const resolvedWatchPath = expandHome(watchPath);
+        if (!existsSync(resolvedWatchPath)) continue;
+        if (extname(resolvedWatchPath) === '.jsonl') {
+          filePaths.add(resolvedWatchPath);
+        } else {
+          for (const filePath of scanJsonlFiles(resolvedWatchPath)) {
+            filePaths.add(filePath);
+          }
+        }
+      }
+
+      const orderedPaths = [...filePaths].sort();
+      const cursorSnapshot = watcher.getCursors();
+      const pathStates = orderedPaths.map((filePath) => {
+        const size = watcher.getFileSize(filePath);
+        const cursor = cursorSnapshot[filePath] ?? 0;
+        let mtimeMs = 0;
+        try {
+          mtimeMs = statSync(filePath).mtimeMs;
+        } catch {
+          mtimeMs = 0;
+        }
+        return {
+          filePath,
+          cursor,
+          size,
+          mtimeMs,
+          hasUnread: size !== null && size > cursor,
+        };
+      });
+      const unreadPaths = pathStates
+        .filter((state) => state.hasUnread)
+        .sort((a, b) => b.mtimeMs - a.mtimeMs || a.filePath.localeCompare(b.filePath));
+      const selectedStates = (full ? pathStates : unreadPaths).slice(0, limitApplied);
+      let processed = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      console.log(
+        `[memrok] Session indexing started: selected=${selectedStates.length} total=${orderedPaths.length} unread=${unreadPaths.length} mode=${full ? 'full' : 'unread'} limit=${limitApplied}`,
+      );
+
+      for (const [index, state] of selectedStates.entries()) {
+        const filePath = state.filePath;
+        const previousCursor = full ? 0 : state.cursor;
+        let result: { content: string | null; nextOffset: number } | null;
+        try {
+          result = watcher.readContentFromOffset(filePath, previousCursor);
+        } catch (err) {
+          failed++;
+          status.recordError('session-index', err);
+          continue;
+        }
+
+        if (!result) {
+          skipped++;
+          continue;
+        }
+
+        console.log(`[memrok] Session indexing ${index + 1}/${selectedStates.length}: ${filePath}`);
+
+        if (!result.content?.trim()) {
+          watcher.setCursor(filePath, result.nextOffset);
+          skipped++;
+          continue;
+        }
+
+        try {
+          await runTranscriptScribeForSource(filePath, result.content, {
+            stage: full ? 'manual-session-reindex' : 'manual-session-index',
+            replay: full,
+            fileIndex: index + 1,
+            fileCount: selectedStates.length,
+          });
+          watcher.setCursor(filePath, result.nextOffset);
+          processed++;
+        } catch (err) {
+          watcher.setCursor(filePath, previousCursor);
+          status.recordError('session-index', err);
+          failed++;
+        }
+      }
+
+      watcher.saveCursors();
+
+      return {
+        filesConsidered: orderedPaths.length,
+        unreadCandidates: unreadPaths.length,
+        processed,
+        skipped,
+        failed,
+        remaining: Math.max((full ? orderedPaths.length : unreadPaths.length) - selectedStates.length, 0),
+        limitApplied,
+      };
+    })();
+
+    try {
+      return await sessionIndexRunInFlight;
+    } finally {
+      sessionIndexRunInFlight = null;
+    }
+  };
+
+  const scanMemory = async (force = false) => {
+    const result = await runBootstrap(store, scribe, config.bootstrap, api, resolveWorkspaceDir(), { force });
+    status.setNodeLifecycleCounts(
+      store.queryNodes({ active: true }).length,
+      store.queryNodes({ active: false }).length,
+    );
+    return result;
+  };
+
+  const flushPendingSessions = async (): Promise<number> => {
+    const processed = await runScribePass();
+    if (processed > 0) {
+      consolidation.recordPassComplete();
+    }
+    return processed;
+  };
+
   watcher.on('data', (filePath: string, content: string) => {
-    lastSourceProcessed = filePath;
-    pendingTranscriptChunks.push(content);
+    pendingTranscriptChunks.push({ source: filePath, content });
     const lines = content.split('\n').filter((line) => line.trim()).length;
     consolidation.recordMessages(lines);
   });
 
-  consolidation.setTriggerCallback(runScribePass);
+  consolidation.setTriggerCallback(async () => {
+    await runScribePass();
+  });
 
-  const runtime = { store, injector, watcher, consolidation };
+  const runtime: PluginRuntimeState = {
+    store,
+    injector,
+    watcher,
+    consolidation,
+    status,
+    config,
+    scanMemory,
+    flushPendingSessions,
+    indexSessionFiles,
+    describeBootstrapTargets: () => resolveBootstrapTargets(config.bootstrap, api, resolveWorkspaceDir()),
+  };
 
   api.registerContextEngine('memrok', () => createContextEngine(runtime));
+  api.registerCommand?.({
+    name: 'memrok',
+    nativeNames: {
+      default: 'memrok',
+    },
+    nativeProgressMessages: {
+      telegram: 'Memrok is working...',
+    },
+    description: 'Show Memrok status and manually trigger memory/session indexing.',
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const parsed = parseCommandArgs(ctx.args);
+      switch (parsed.kind) {
+        case 'status': {
+          const activity = status.getStatus();
+          const targets = runtime.describeBootstrapTargets();
+          return {
+            text: [
+              '**Memrok**',
+              `db: \`${config.dbPath}\``,
+              `watch paths: ${config.watchPaths.length}`,
+              `memory dirs: ${targets.memoryDirs.length}`,
+              `memory indexes: ${targets.memoryIndexes.length}`,
+              `active nodes: ${activity.activeNodeCount}`,
+              `expired nodes: ${activity.expiredNodeCount}`,
+              `last transcript scribe: ${formatTimestamp(activity.lastTranscriptScribeAt)}`,
+              `last reflection: ${formatTimestamp(activity.lastReflectiveScribeAt)}`,
+              `last source: ${activity.lastSourceProcessed ?? 'none'}`,
+            ].join('\n'),
+          };
+        }
+        case 'scan-memory': {
+          const result = await runtime.scanMemory(parsed.force);
+          return {
+            text: `Memrok memory scan complete. considered=${result.filesConsidered} processed=${result.processed} skipped=${result.skipped} failed=${result.failed}${parsed.force ? ' force=true' : ''}`,
+          };
+        }
+        case 'flush-sessions': {
+          const processed = await runtime.flushPendingSessions();
+          return {
+            text: processed > 0
+              ? `Memrok flushed pending session indexing. processed=${processed}`
+              : 'Memrok has no pending session transcript chunks to flush.',
+          };
+        }
+        case 'index-sessions': {
+          const result = await runtime.indexSessionFiles({ full: parsed.full, limit: parsed.limit });
+          return {
+            text: `Memrok session indexing complete. considered=${result.filesConsidered} unread=${result.unreadCandidates} processed=${result.processed} skipped=${result.skipped} failed=${result.failed} remaining=${result.remaining} limit=${result.limitApplied}${parsed.full ? ' mode=full' : ' mode=unread'}`,
+          };
+        }
+        case 'help':
+          return { text: buildHelpText(parsed.error) };
+      }
+    },
+  });
   api.registerService({
     id: 'memrok-watcher',
     async start() {
@@ -595,26 +1184,13 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
       }, DEFAULT_REFLECTION_CHECK_INTERVAL_MS);
       await checkAndRunReflection();
 
-      // Auto-bootstrap: seed the graph from existing memory files if no
-      // non-bootstrap passes have been recorded yet (i.e. fresh graph).
       if (config.bootstrap.enabled) {
-        const passes = store.listPasses();
-        const hasNonBootstrapPasses = passes.some((p) => p.source && !p.source.startsWith('bootstrap:'));
-        if (!hasNonBootstrapPasses) {
-          const workspaceDir =
-            api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config) ?? process.cwd();
-          runBootstrap(store, scribe, config.bootstrap, workspaceDir).then(() => {
-            status.setNodeLifecycleCounts(
-              store.queryNodes({ active: true }).length,
-              store.queryNodes({ active: false }).length,
-            );
-          }).catch((err) => {
-            status.recordError('bootstrap', err);
-            console.warn(
-              `[memrok] Bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          });
-        }
+        scanMemory(false).catch((err) => {
+          status.recordError('bootstrap', err);
+          console.warn(
+            `[memrok] Bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
       }
     },
     async stop() {

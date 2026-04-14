@@ -1,20 +1,22 @@
 import { afterEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createStore } from '@memrok/store';
-import { createPluginRegistration, resolveConfig, runReflectionPass, shouldRunReflection } from './plugin.js';
-import type { ContextEngine, PluginApi, PluginService } from './types.js';
+import { createModelCaller, createPluginRegistration, resolveConfig, runReflectionPass, shouldRunReflection } from './plugin.js';
+import type { ContextEngine, PluginApi, PluginCommandDefinition, PluginService } from './types.js';
 
 function createApi(overrides: Partial<PluginApi> = {}): {
   api: PluginApi;
   services: PluginService[];
   factories: Map<string, () => ContextEngine>;
+  commands: PluginCommandDefinition[];
 } {
   const services: PluginService[] = [];
   const factories = new Map<string, () => ContextEngine>();
+  const commands: PluginCommandDefinition[] = [];
   const api: PluginApi = {
     pluginConfig: {},
     logger: {
@@ -29,9 +31,12 @@ function createApi(overrides: Partial<PluginApi> = {}): {
     registerService(service) {
       services.push(service);
     },
+    registerCommand(command) {
+      commands.push(command);
+    },
     ...overrides,
   };
-  return { api, services, factories };
+  return { api, services, factories, commands };
 }
 
 afterEach(() => {
@@ -48,7 +53,7 @@ describe('openclaw plugin orchestration', () => {
     assert.equal(resolved.idleMinutes, 15);
     assert.equal(resolved.tokenBudget, 1000);
     assert.equal(resolved.bootstrap.enabled, false);
-    assert.ok(resolved.dbPath.endsWith('/.memrok/memrok.db'));
+    assert.ok(resolved.dbPath.endsWith('/.openclaw/plugins/memrok/memrok.db'));
   });
 
   it('resolves reflection config defaults', () => {
@@ -166,6 +171,297 @@ describe('openclaw plugin orchestration', () => {
       assert.match(result.systemPromptAddition ?? '', /Michael likes train commutes/);
       runtime.store.close();
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('discovers memory targets for multiple configured OpenClaw agents', () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'memrok-openclaw-state-'));
+    const oldStateDir = process.env.OPENCLAW_STATE_DIR;
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    try {
+      mkdirSync(join(stateDir, 'agents', 'alpha', 'memory'), { recursive: true });
+      mkdirSync(join(stateDir, 'agents', 'beta', 'memory'), { recursive: true });
+
+      const { api } = createApi({
+        pluginConfig: {
+          dbPath: join(stateDir, 'memrok.db'),
+          bootstrap: {
+            enabled: true,
+          },
+        },
+      });
+
+      const runtime = createPluginRegistration(api);
+      const targets = runtime.describeBootstrapTargets();
+
+      assert.deepEqual(targets.memoryDirs, [
+        join(stateDir, 'agents', 'alpha', 'memory'),
+        join(stateDir, 'agents', 'beta', 'memory'),
+      ]);
+      assert.deepEqual(targets.memoryIndexes, [
+        join(stateDir, 'agents', 'alpha', 'MEMORY.md'),
+        join(stateDir, 'agents', 'beta', 'MEMORY.md'),
+      ]);
+      runtime.store.close();
+    } finally {
+      if (oldStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = oldStateDir;
+      rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it('registers a memrok command surface for manual operations', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-command-'));
+    try {
+      const { api, commands } = createApi({
+        pluginConfig: {
+          dbPath: join(dir, 'memrok.db'),
+          watchPaths: [dir],
+        },
+      });
+
+      const runtime = createPluginRegistration(api);
+      assert.equal(commands.length, 1);
+      assert.equal(commands[0]?.name, 'memrok');
+
+      const help = await commands[0]!.handler({ args: 'help' });
+      assert.match(help.text, /scan-memory/);
+
+      const status = await commands[0]!.handler({ args: 'status' });
+      assert.match(status.text, /Memrok/);
+      runtime.store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('omits explicit provider and model so OpenClaw defaults can apply', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-model-defaults-'));
+    const runEmbeddedPiAgent = vi.fn(async () => ({
+      payloads: [{ text: '{"pass_id":"scribe-defaults","mutations":[]}' }],
+    }));
+
+    try {
+      const { api } = createApi({
+        runtime: {
+          agent: {
+            runEmbeddedPiAgent,
+            resolveAgentWorkspaceDir: () => dir,
+          },
+        },
+      });
+
+      const caller = createModelCaller(api, resolveConfig({}, api));
+      await caller('system', 'user');
+
+      const params = runEmbeddedPiAgent.mock.calls[0]?.[0] as Record<string, unknown>;
+      assert.ok(params);
+      assert.equal('provider' in params, false);
+      assert.equal('model' in params, false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('bootstraps memory files on service start even when transcript passes already exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-bootstrap-start-'));
+    const dbPath = join(dir, 'memrok.db');
+    const seededStore = createStore(dbPath);
+
+    try {
+      mkdirSync(join(dir, 'memory'), { recursive: true });
+      writeFileSync(join(dir, 'memory', 'note.md'), '# Existing memory\n');
+      seededStore.applyPass({
+        pass_id: 'transcript-existing',
+        source: 'session-1',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'user',
+            category: 'fact',
+            key: 'user.fact.seeded',
+            value: 'already has transcript data',
+          },
+        ],
+      });
+      seededStore.close();
+
+      const runEmbeddedPiAgent = vi.fn(async () => ({
+        payloads: [{ text: '{"pass_id":"bootstrap-pass","mutations":[]}' }],
+      }));
+
+      const { api, services } = createApi({
+        pluginConfig: {
+          dbPath,
+          watchPaths: [dir],
+          bootstrap: {
+            enabled: true,
+            delayMs: 0,
+            scanConfiguredAgents: false,
+          },
+        },
+        runtime: {
+          agent: {
+            runEmbeddedPiAgent,
+            resolveAgentWorkspaceDir: () => dir,
+          },
+        },
+      });
+
+      createPluginRegistration(api);
+      await services[0]!.start({ stateDir: dir });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.ok(runEmbeddedPiAgent.mock.calls.length >= 1);
+      await services[0]!.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('bounds full session reindex runs and reports remaining files', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-index-limit-'));
+    const sessionsDir = join(dir, 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    const oldStateDir = process.env.OPENCLAW_STATE_DIR;
+    process.env.OPENCLAW_STATE_DIR = dir;
+
+    try {
+      for (let index = 0; index < 30; index++) {
+        writeFileSync(
+          join(sessionsDir, `session-${index.toString().padStart(2, '0')}.jsonl`),
+          '{"type":"user","text":"hello"}\n',
+        );
+      }
+
+      let passCounter = 0;
+      const runEmbeddedPiAgent = vi.fn(async () => ({
+        payloads: [{ text: `{"pass_id":"session-index-pass-${++passCounter}","mutations":[]}` }],
+      }));
+
+      const { api } = createApi({
+        pluginConfig: {
+          dbPath: join(dir, 'memrok.db'),
+        },
+        runtime: {
+          agent: {
+            sessionDirs: [sessionsDir],
+            runEmbeddedPiAgent,
+            resolveAgentWorkspaceDir: () => dir,
+          },
+        },
+      });
+
+      const runtime = createPluginRegistration(api);
+      const result = await runtime.indexSessionFiles({ full: true });
+
+      assert.equal(result.filesConsidered, 30);
+      assert.equal(result.unreadCandidates, 30);
+      assert.equal(result.limitApplied, 25);
+      assert.equal(result.processed, 25);
+      assert.equal(result.remaining, 5);
+      runtime.store.close();
+    } finally {
+      if (oldStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = oldStateDir;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('advances the cursor after a full replay so unread replay does not immediately duplicate it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-index-cursor-'));
+    const sessionsDir = join(dir, 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    writeFileSync(join(sessionsDir, 'session.jsonl'), '{"type":"user","text":"hello"}\n');
+    const oldStateDir = process.env.OPENCLAW_STATE_DIR;
+    process.env.OPENCLAW_STATE_DIR = dir;
+
+    let passCounter = 0;
+    const runEmbeddedPiAgent = vi.fn(async () => ({
+      payloads: [{ text: `{"pass_id":"session-replay-pass-${++passCounter}","mutations":[]}` }],
+    }));
+
+    try {
+      const { api } = createApi({
+        pluginConfig: {
+          dbPath: join(dir, 'memrok.db'),
+        },
+        runtime: {
+          agent: {
+            sessionDirs: [sessionsDir],
+            runEmbeddedPiAgent,
+            resolveAgentWorkspaceDir: () => dir,
+          },
+        },
+      });
+
+      const runtime = createPluginRegistration(api);
+      const fullReplay = await runtime.indexSessionFiles({ full: true, limit: 10 });
+      const unreadReplay = await runtime.indexSessionFiles({ limit: 10 });
+
+      assert.equal(fullReplay.processed, 1);
+      assert.equal(fullReplay.unreadCandidates, 1);
+      assert.equal(unreadReplay.processed, 0);
+      assert.equal(unreadReplay.unreadCandidates, 0);
+      assert.equal(unreadReplay.skipped, 0);
+      runtime.store.close();
+    } finally {
+      if (oldStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = oldStateDir;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('prefilters unread session indexing to files with unread bytes before applying the limit', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-index-unread-filter-'));
+    const sessionsDir = join(dir, 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    const oldStateDir = process.env.OPENCLAW_STATE_DIR;
+    process.env.OPENCLAW_STATE_DIR = dir;
+
+    const readPath = join(sessionsDir, 'older-read.jsonl');
+    const unreadPath = join(sessionsDir, 'newer-unread.jsonl');
+    writeFileSync(readPath, '{"type":"user","text":"read"}\n');
+    writeFileSync(unreadPath, '{"type":"user","text":"unread"}\n');
+
+    let passCounter = 0;
+    const runEmbeddedPiAgent = vi.fn(async () => ({
+      payloads: [{ text: `{"pass_id":"session-unread-pass-${++passCounter}","mutations":[]}` }],
+    }));
+
+    try {
+      const { api } = createApi({
+        pluginConfig: {
+          dbPath: join(dir, 'memrok.db'),
+        },
+        runtime: {
+          agent: {
+            sessionDirs: [sessionsDir],
+            runEmbeddedPiAgent,
+            resolveAgentWorkspaceDir: () => dir,
+          },
+        },
+      });
+
+      const runtime = createPluginRegistration(api);
+      runtime.watcher.setCursor(readPath, readFileSync(readPath, 'utf-8').length);
+      runtime.watcher.saveCursors();
+
+      const result = await runtime.indexSessionFiles({ limit: 1 });
+
+      assert.equal(result.filesConsidered, 2);
+      assert.equal(result.unreadCandidates, 1);
+      assert.equal(result.processed, 1);
+      assert.equal(result.remaining, 0);
+      assert.equal(runEmbeddedPiAgent.mock.calls.length, 1);
+      const call = runEmbeddedPiAgent.mock.calls[0]?.[0] as { sessionFile?: string; prompt?: string };
+      assert.ok(call);
+      assert.match(call.prompt ?? '', /unread/);
+      runtime.store.close();
+    } finally {
+      if (oldStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = oldStateDir;
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -404,7 +700,7 @@ describe('runReflectionPass', () => {
       });
       seededStore.close();
 
-      const db = new Database(dbPath);
+      const db = new DatabaseSync(dbPath);
       db.prepare('UPDATE passes SET timestamp = ? WHERE pass_id = ?').run('2026-01-01 00:00:00', 'reflection-old');
       db.prepare('UPDATE passes SET timestamp = ? WHERE pass_id = ?').run('2026-01-01 01:00:00', 'transcript-after-reflection');
       db.close();

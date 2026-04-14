@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
 const CURRENT_VERSION = 4;
 
@@ -158,6 +158,7 @@ CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_pass_id ON working_set
 CREATE INDEX IF NOT EXISTS idx_working_set_snapshot_items_mutation_id ON working_set_snapshot_items(mutation_id);
 `;
 
+function getCurrentVersion(db: DatabaseSync): number {
 const SCHEMA_V4 = `
 CREATE TABLE IF NOT EXISTS node_hygiene (
     node_key      TEXT PRIMARY KEY,
@@ -206,12 +207,12 @@ function getCurrentVersion(db: Database.Database): number {
   return row?.version ?? 1;
 }
 
-function columnExists(db: Database.Database, table: string, column: string): boolean {
+function columnExists(db: DatabaseSync, table: string, column: string): boolean {
   const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   return rows.some((row) => row.name === column);
 }
 
-export function initSchema(db: Database.Database): void {
+export function initSchema(db: DatabaseSync): void {
   const hasVersionTable = db.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
   ).get();
