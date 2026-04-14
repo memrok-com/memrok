@@ -39,8 +39,8 @@
     {
       "layer": "user",
       "category": "decision",
-      "key": "user/priomind/landing-positioning",
-      "value": "PrioMind landing page messaging should emphasize structured decisions and team trust."
+      "key": "user/product/landing-positioning",
+      "value": "Product landing page messaging should emphasize structured decisions and team trust."
     }
   ],
   "expectations": {
@@ -51,7 +51,7 @@
     "expectedOut": [
       "user/profile/global-admin",
       "user/memrok/product-principles",
-      "user/priomind/landing-positioning"
+      "user/product/landing-positioning"
     ]
   }
 }

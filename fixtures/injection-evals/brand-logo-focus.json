@@ -1,0 +1,66 @@
+{
+  "id": "brand-logo-focus",
+  "title": "Brand logo thread stays local",
+  "description": "Brand/logo review should stay in the current brief and avoid dragging in unrelated health or memory-system residue.",
+  "query": "Business logo direction, typography, and current brief review.",
+  "options": {
+    "tokenBudget": 260,
+    "layerWeights": {
+      "user": 0.7,
+      "agent": 0.15,
+      "collaboration": 0.15
+    }
+  },
+  "nodes": [
+    {
+      "layer": "user",
+      "category": "project",
+      "key": "user/brand/logo-brief",
+      "value": "Logo review work should stay close to the current brand brief and typography choices."
+    },
+    {
+      "layer": "collaboration",
+      "category": "dynamic",
+      "key": "collaboration/brand/review-loop",
+      "value": "For logo reviews, keep feedback concrete around the current brief instead of drifting into unrelated background."
+    },
+    {
+      "layer": "agent",
+      "category": "pattern",
+      "key": "agent/brand/logo/options",
+      "value": "When reviewing a logo, compare typography and symbol direction directly against the brief."
+    },
+    {
+      "layer": "user",
+      "category": "preference",
+      "key": "user/wellbeing/recovery-pattern",
+      "value": "Wellbeing check-ins should stay centered on sleep, energy, and recovery."
+    },
+    {
+      "layer": "user",
+      "category": "belief",
+      "key": "user/memory-system/open-source-positioning",
+      "value": "A memory system should be inspectable open-source infrastructure with explicit judgment."
+    },
+    {
+      "layer": "user",
+      "category": "preference",
+      "key": "user/profile/global-admin",
+      "value": "Broad profile note: prefers biography framing and global admin summaries across projects."
+    }
+  ],
+  "expectations": {
+    "expectedIn": [
+      "user/brand/logo-brief",
+      "collaboration/brand/review-loop"
+    ],
+    "expectedOut": [
+      "user/wellbeing/recovery-pattern",
+      "user/memory-system/open-source-positioning",
+      "user/profile/global-admin"
+    ],
+    "allowedExtras": [
+      "agent/brand/logo/options"
+    ]
+  }
+}

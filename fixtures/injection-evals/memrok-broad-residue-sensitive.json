@@ -33,8 +33,8 @@
     {
       "layer": "user",
       "category": "decision",
-      "key": "user/infra/tandem-telegram-forum",
-      "value": "Created Telegram forum group Tandem to structure infrastructure conversations by topic."
+      "key": "user/infra/topic-routed-debugging",
+      "value": "Structured technical conversations by topic to preserve debugging continuity and reduce cross-thread confusion."
     },
     {
       "layer": "user",
@@ -50,7 +50,7 @@
     ],
     "expectedOut": [
       "user/profile/global-admin",
-      "user/infra/tandem-telegram-forum",
+      "user/infra/topic-routed-debugging",
       "user/memrok/generic-memory-principles"
     ]
   }

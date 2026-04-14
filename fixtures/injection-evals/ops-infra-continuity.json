@@ -2,7 +2,7 @@
   "id": "ops-infra-continuity",
   "title": "Ops and infra tolerates infra-local continuity",
   "description": "Infra probes can keep more technical continuity, but they should stay infra-local.",
-  "query": "Ops and infra: gateway cron failure, provider failover, and Telegram bridge debugging.",
+  "query": "Ops and infra: gateway cron failure, provider failover, and chat bridge debugging.",
   "options": {
     "tokenBudget": 320,
     "layerWeights": {

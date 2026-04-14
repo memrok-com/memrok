@@ -191,10 +191,10 @@ describe('injection critic', () => {
       true,
     );
 
-    const schmidle = run.results.find((result) => result.fixtureId === 'schmidle-impuls-logo-focus');
-    assert.equal(schmidle?.critic.pass, false);
+    const brandLogo = run.results.find((result) => result.fixtureId === 'brand-logo-focus');
+    assert.equal(brandLogo?.critic.pass, false);
     assert.equal(
-      schmidle?.critic.failureModes.find((mode) => mode.mode === 'useful-sparsity-ignored')?.triggered,
+      brandLogo?.critic.failureModes.find((mode) => mode.mode === 'useful-sparsity-ignored')?.triggered,
       true,
     );
   });
