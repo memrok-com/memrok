@@ -1,0 +1,50 @@
+{
+  "id": "memrok-wrong-topic-same-project",
+  "title": "Memrok same-project topic confusion stays out",
+  "description": "A Memrok reflection-serializer probe should not pull in unrelated Memrok injector-ranking residue just because it shares the project domain.",
+  "query": "Memrok reflection serializer formatting and graph state truncation for reflection input.",
+  "options": {
+    "tokenBudget": 300,
+    "layerWeights": {
+      "user": 0.65,
+      "agent": 0.2,
+      "collaboration": 0.15
+    }
+  },
+  "nodes": [
+    {
+      "layer": "user",
+      "category": "project",
+      "key": "user/memrok/reflection-serializer/truncation",
+      "value": "Memrok reflection serializer should truncate lower-priority graph state while preserving relevant reflection context."
+    },
+    {
+      "layer": "agent",
+      "category": "skill",
+      "key": "agent/memrok/reflection/formatting",
+      "value": "Reflection formatting work should stay focused on serializer structure and graph-state sections."
+    },
+    {
+      "layer": "user",
+      "category": "project",
+      "key": "user/memrok/injector-ranking",
+      "value": "Memrok injector ranking work is about focused context selection and topic regressions."
+    },
+    {
+      "layer": "collaboration",
+      "category": "dynamic",
+      "key": "collaboration/memrok/card-80/review-loop",
+      "value": "Card 80 review threads stay focused on header precision and ranking regressions."
+    }
+  ],
+  "expectations": {
+    "expectedIn": [
+      "user/memrok/reflection-serializer/truncation",
+      "agent/memrok/reflection/formatting"
+    ],
+    "expectedOut": [
+      "user/memrok/injector-ranking",
+      "collaboration/memrok/card-80/review-loop"
+    ]
+  }
+}

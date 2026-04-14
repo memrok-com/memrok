@@ -1,0 +1,59 @@
+{
+  "id": "ops-infra-continuity",
+  "title": "Ops and infra tolerates infra-local continuity",
+  "description": "Infra probes can keep more technical continuity, but they should stay infra-local.",
+  "query": "Ops and infra: gateway cron failure, provider failover, and Telegram bridge debugging.",
+  "options": {
+    "tokenBudget": 320,
+    "layerWeights": {
+      "user": 0.55,
+      "agent": 0.25,
+      "collaboration": 0.2
+    }
+  },
+  "nodes": [
+    {
+      "layer": "user",
+      "category": "decision",
+      "key": "user/infra/gateway-failover",
+      "value": "Infra continuity depends on gateway failover, cron visibility, and provider fallback."
+    },
+    {
+      "layer": "agent",
+      "category": "skill",
+      "key": "agent/infra/incident-triage",
+      "value": "For infra incidents, trace gateway, cron, provider, and bridge layers in that order."
+    },
+    {
+      "layer": "collaboration",
+      "category": "dynamic",
+      "key": "collaboration/infra/ops-handshake",
+      "value": "Ops and infra threads should keep handoff notes concrete so debugging continuity is preserved."
+    },
+    {
+      "layer": "user",
+      "category": "preference",
+      "key": "user/health/recovery-pattern",
+      "value": "Health and wellbeing check-ins should stay centered on sleep, energy, and recovery."
+    },
+    {
+      "layer": "user",
+      "category": "belief",
+      "key": "user/memrok/product-principles",
+      "value": "Memrok should preserve inspectability and judgment in memory retrieval."
+    }
+  ],
+  "expectations": {
+    "expectedIn": [
+      "user/infra/gateway-failover",
+      "agent/infra/incident-triage"
+    ],
+    "expectedOut": [
+      "user/health/recovery-pattern",
+      "user/memrok/product-principles"
+    ],
+    "allowedExtras": [
+      "collaboration/infra/ops-handshake"
+    ]
+  }
+}

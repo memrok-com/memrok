@@ -1,0 +1,57 @@
+{
+  "id": "health-wellbeing-local",
+  "title": "Health and wellbeing prefers local continuity",
+  "description": "Health probes should favor wellbeing-local memories over broad user/project facts.",
+  "query": "Health and wellbeing check-in: sleep, energy, recovery planning, and privacy around health tracking.",
+  "options": {
+    "tokenBudget": 280,
+    "layerWeights": {
+      "user": 0.7,
+      "agent": 0.1,
+      "collaboration": 0.2
+    }
+  },
+  "nodes": [
+    {
+      "layer": "user",
+      "category": "preference",
+      "key": "user/health/recovery-pattern",
+      "value": "Health and wellbeing reviews should stay local to sleep, energy, and recovery rather than broad life summaries."
+    },
+    {
+      "layer": "collaboration",
+      "category": "dynamic",
+      "key": "collaboration/health/checkin-style",
+      "value": "In health check-ins, keep privacy and practical next steps explicit."
+    },
+    {
+      "layer": "user",
+      "category": "preference",
+      "key": "user/profile/global-admin",
+      "value": "Broad profile note: prefers biography framing and global admin summaries across projects."
+    },
+    {
+      "layer": "user",
+      "category": "belief",
+      "key": "user/memrok/product-principles",
+      "value": "Memrok should preserve inspectability and judgment in memory retrieval."
+    },
+    {
+      "layer": "user",
+      "category": "decision",
+      "key": "user/priomind/landing-positioning",
+      "value": "PrioMind landing page messaging should emphasize structured decisions and team trust."
+    }
+  ],
+  "expectations": {
+    "expectedIn": [
+      "user/health/recovery-pattern",
+      "collaboration/health/checkin-style"
+    ],
+    "expectedOut": [
+      "user/profile/global-admin",
+      "user/memrok/product-principles",
+      "user/priomind/landing-positioning"
+    ]
+  }
+}

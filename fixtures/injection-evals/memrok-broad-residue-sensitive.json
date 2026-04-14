@@ -1,0 +1,57 @@
+{
+  "id": "memrok-broad-residue-sensitive",
+  "title": "Memrok probes are sensitive to broad generic residue",
+  "description": "Memrok-topic probes should strongly avoid broad profile or historical infra residue.",
+  "query": "Memrok injector ranking regression in card 80: fix focused context selection and header precision.",
+  "options": {
+    "tokenBudget": 300,
+    "layerWeights": {
+      "user": 0.7,
+      "agent": 0.15,
+      "collaboration": 0.15
+    }
+  },
+  "nodes": [
+    {
+      "layer": "user",
+      "category": "project",
+      "key": "user/memrok/card-80/injector-selection",
+      "value": "Memrok card 80 is about focused header selection, ranking regressions, and reducing broad residue."
+    },
+    {
+      "layer": "collaboration",
+      "category": "dynamic",
+      "key": "collaboration/memrok/eval-loop",
+      "value": "Memrok changes should be checked against explicit eval cases instead of taste alone."
+    },
+    {
+      "layer": "user",
+      "category": "preference",
+      "key": "user/profile/global-admin",
+      "value": "Broad profile note: prefers biography framing and global admin summaries across projects."
+    },
+    {
+      "layer": "user",
+      "category": "decision",
+      "key": "user/infra/tandem-telegram-forum",
+      "value": "Created Telegram forum group Tandem to structure infrastructure conversations by topic."
+    },
+    {
+      "layer": "user",
+      "category": "belief",
+      "key": "user/memrok/generic-memory-principles",
+      "value": "Memrok should improve context selection, retrieval, memory judgment, and graph curation as a general system baseline."
+    }
+  ],
+  "expectations": {
+    "expectedIn": [
+      "user/memrok/card-80/injector-selection",
+      "collaboration/memrok/eval-loop"
+    ],
+    "expectedOut": [
+      "user/profile/global-admin",
+      "user/infra/tandem-telegram-forum",
+      "user/memrok/generic-memory-principles"
+    ]
+  }
+}
