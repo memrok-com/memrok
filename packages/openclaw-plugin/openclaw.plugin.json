@@ -32,6 +32,18 @@
           "delayMs": { "type": "number" }
         }
       },
+      "evalEvents": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "includeHeaderText": { "type": "boolean" },
+          "maxQueryChars": { "type": "number" },
+          "maxHeaderChars": { "type": "number" },
+          "maxNodeValueChars": { "type": "number" },
+          "maxEvents": { "type": "number" }
+        }
+      },
       "watchPaths": {
         "type": "array",
         "items": { "type": "string" }

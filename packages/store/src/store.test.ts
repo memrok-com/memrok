@@ -565,4 +565,72 @@ describe('Store', () => {
       assert.equal(store.getHistory(snapshot!.items[0].node_key).at(-1)?.id, snapshot?.items[0].mutation_id);
     });
   });
+
+  describe('injection eval events', () => {
+    it('stores bounded runtime injection evaluation events with retention', () => {
+      const first = store.createInjectionEvalEvent(
+        {
+          eventKind: 'runtime',
+          sessionId: 'session-1',
+          queryExcerpt: 'recent user context',
+          queryHash: 'hash-1',
+          queryChars: 128,
+          headerText: 'rendered header',
+          headerTokens: 10,
+          nodesUsed: 1,
+          selectedNodes: [
+            {
+              key: 'user/memrok/card-80',
+              layer: 'user',
+              category: 'project',
+              valueExcerpt: 'Memrok card 80 selection context.',
+              score: 0.9,
+              selectedBecause: ['query coverage'],
+            },
+          ],
+          rejectedCandidates: [],
+          metadata: { source: 'test' },
+        },
+        { maxEvents: 2 },
+      );
+
+      store.createInjectionEvalEvent(
+        {
+          eventKind: 'probe',
+          queryChars: 20,
+          headerTokens: 5,
+          nodesUsed: 0,
+          selectedNodes: [],
+        },
+        { maxEvents: 2 },
+      );
+      const third = store.createInjectionEvalEvent(
+        {
+          eventKind: 'runtime',
+          sessionId: 'session-2',
+          queryChars: 40,
+          headerTokens: 8,
+          nodesUsed: 1,
+          selectedNodes: [
+            {
+              key: 'user/health/recovery-pattern',
+              layer: 'user',
+              category: 'preference',
+              valueExcerpt: 'Health recovery context.',
+            },
+          ],
+        },
+        { maxEvents: 2 },
+      );
+
+      assert.equal(store.getInjectionEvalEvent(first.id), null);
+
+      const events = store.listInjectionEvalEvents();
+      assert.equal(events.length, 2);
+      assert.equal(events[0].id, third.id);
+      assert.equal(events[0].event_kind, 'runtime');
+      assert.equal(events[0].selected_nodes[0].key, 'user/health/recovery-pattern');
+      assert.deepEqual(events[1].selected_nodes, []);
+    });
+  });
 });

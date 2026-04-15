@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 
-const CURRENT_VERSION = 4;
+const CURRENT_VERSION = 5;
 
 const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -199,6 +199,28 @@ CREATE INDEX IF NOT EXISTS idx_node_hygiene_events_node_key ON node_hygiene_even
 CREATE INDEX IF NOT EXISTS idx_node_hygiene_events_created_at ON node_hygiene_events(created_at DESC);
 `;
 
+const SCHEMA_V5 = `
+CREATE TABLE IF NOT EXISTS injection_eval_events (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_kind          TEXT NOT NULL,
+    session_id          TEXT,
+    query_excerpt       TEXT,
+    query_hash          TEXT,
+    query_chars         INTEGER NOT NULL DEFAULT 0,
+    header_text         TEXT,
+    header_tokens       INTEGER NOT NULL DEFAULT 0,
+    nodes_used          INTEGER NOT NULL DEFAULT 0,
+    selected_nodes      TEXT NOT NULL,
+    rejected_candidates TEXT,
+    metadata            TEXT,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_injection_eval_events_kind ON injection_eval_events(event_kind);
+CREATE INDEX IF NOT EXISTS idx_injection_eval_events_session_id ON injection_eval_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_injection_eval_events_created_at ON injection_eval_events(created_at DESC);
+`;
+
 function getCurrentVersion(db: Database.Database): number {
   const row = db.prepare(
     'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1'
@@ -223,9 +245,10 @@ export function initSchema(db: Database.Database): void {
     ).run(1, 'Initial schema');
     db.exec(SCHEMA_V2);
     db.exec(SCHEMA_V4);
+    db.exec(SCHEMA_V5);
     db.prepare(
       'INSERT INTO schema_version (version, description) VALUES (?, ?)'
-    ).run(CURRENT_VERSION, 'Archive observations, derived artifacts, and working set traces with mutation provenance');
+    ).run(CURRENT_VERSION, 'Archive observations, working set traces, node hygiene, and injection eval events');
     return;
   }
 
@@ -253,5 +276,11 @@ export function initSchema(db: Database.Database): void {
     db.prepare(
       'INSERT INTO schema_version (version, description) VALUES (?, ?)'
     ).run(4, 'Add reversible node hygiene state and audit events');
+  }
+  if (currentVersion < 5) {
+    db.exec(SCHEMA_V5);
+    db.prepare(
+      'INSERT INTO schema_version (version, description) VALUES (?, ?)'
+    ).run(5, 'Add bounded injection evaluation event log');
   }
 }

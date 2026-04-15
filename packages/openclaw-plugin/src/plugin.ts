@@ -30,6 +30,12 @@ const DEFAULT_REFLECTION_CHECK_INTERVAL_MS = 60_000;
 const DEFAULT_BOOTSTRAP_ENABLED = false;
 const DEFAULT_BOOTSTRAP_MAX_AGE_DAYS = 90;
 const DEFAULT_BOOTSTRAP_DELAY_MS = 10_000;
+const DEFAULT_EVAL_EVENTS_ENABLED = false;
+const DEFAULT_EVAL_EVENTS_INCLUDE_HEADER = true;
+const DEFAULT_EVAL_EVENTS_QUERY_CHARS = 1000;
+const DEFAULT_EVAL_EVENTS_HEADER_CHARS = 4000;
+const DEFAULT_EVAL_EVENTS_NODE_VALUE_CHARS = 220;
+const DEFAULT_EVAL_EVENTS_MAX_EVENTS = 500;
 
 function expandHome(input: string): string {
   if (input === '~') return homedir();
@@ -118,6 +124,14 @@ export function resolveConfig(
     maxAgeDays: config.bootstrap?.maxAgeDays ?? DEFAULT_BOOTSTRAP_MAX_AGE_DAYS,
     delayMs: config.bootstrap?.delayMs ?? DEFAULT_BOOTSTRAP_DELAY_MS,
   };
+  const evalEvents = {
+    enabled: config.evalEvents?.enabled ?? DEFAULT_EVAL_EVENTS_ENABLED,
+    includeHeaderText: config.evalEvents?.includeHeaderText ?? DEFAULT_EVAL_EVENTS_INCLUDE_HEADER,
+    maxQueryChars: config.evalEvents?.maxQueryChars ?? DEFAULT_EVAL_EVENTS_QUERY_CHARS,
+    maxHeaderChars: config.evalEvents?.maxHeaderChars ?? DEFAULT_EVAL_EVENTS_HEADER_CHARS,
+    maxNodeValueChars: config.evalEvents?.maxNodeValueChars ?? DEFAULT_EVAL_EVENTS_NODE_VALUE_CHARS,
+    maxEvents: config.evalEvents?.maxEvents ?? DEFAULT_EVAL_EVENTS_MAX_EVENTS,
+  };
   return {
     dbPath: expandHome(config.dbPath ?? DEFAULT_DB_PATH),
     scribeProvider,
@@ -128,6 +142,7 @@ export function resolveConfig(
     tokenBudget: config.tokenBudget ?? DEFAULT_TOKEN_BUDGET,
     reflection,
     bootstrap,
+    evalEvents,
   };
 }
 
@@ -474,7 +489,19 @@ export function createPluginRegistration(api: PluginApi): PluginRuntimeState {
     store.queryNodes({ active: true }).length,
     store.queryNodes({ active: false }).length,
   );
-  const baseInjector = createInjector(store, { tokenBudget: config.tokenBudget });
+  const baseInjector = createInjector(store, {
+    tokenBudget: config.tokenBudget,
+    injectionEvalEvents: {
+      enabled: config.evalEvents.enabled,
+      eventKind: 'runtime',
+      includeHeaderText: config.evalEvents.includeHeaderText,
+      maxQueryChars: config.evalEvents.maxQueryChars,
+      maxHeaderChars: config.evalEvents.maxHeaderChars,
+      maxNodeValueChars: config.evalEvents.maxNodeValueChars,
+      retention: { maxEvents: config.evalEvents.maxEvents },
+      metadata: { source: 'openclaw-plugin' },
+    },
+  });
   const injector = {
     ...baseInjector,
     assemble(context: { recentMessages?: string }) {

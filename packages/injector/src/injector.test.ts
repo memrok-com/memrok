@@ -924,6 +924,87 @@ describe('injector', () => {
       assert.ok(header.text.includes('Inspect this header without persisting a trace.'));
       assert.equal(store.listWorkingSetSnapshots().length, 0);
     });
+
+    it('logs bounded injection eval events when enabled', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'eval-event-pass',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/memrok/eval-events',
+              value: 'Memrok runtime injections should emit bounded evaluation evidence.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, {
+        injectionEvalEvents: {
+          enabled: true,
+          maxQueryChars: 18,
+          maxHeaderChars: 80,
+          maxNodeValueChars: 32,
+          metadata: { source: 'test-config' },
+          retention: { maxEvents: 10 },
+        },
+      });
+      injector.assemble({
+        recentMessages: 'Memrok eval events should capture runtime injection evidence without dumping too much private context.',
+        sessionId: 'session-eval-event',
+      });
+
+      const events = store.listInjectionEvalEvents();
+      assert.equal(events.length, 1);
+      assert.equal(events[0].event_kind, 'runtime');
+      assert.equal(events[0].session_id, 'session-eval-event');
+      assert.ok((events[0].query_excerpt?.length ?? 0) <= 18);
+      assert.ok(events[0].query_hash);
+      assert.ok((events[0].header_text?.length ?? 0) <= 80);
+      assert.equal(events[0].selected_nodes.length, 1);
+      assert.equal(events[0].selected_nodes[0].key, 'user/memrok/eval-events');
+      assert.ok(events[0].selected_nodes[0].valueExcerpt.length <= 32);
+      assert.equal(events[0].metadata?.source, 'test-config');
+      assert.equal((events[0].metadata?.privacy as Record<string, unknown>).queryExcerptChars, 18);
+      assert.equal(events[0].metadata?.topRejectedCandidatesAvailable, false);
+    });
+
+    it('can log explicit probe eval events without normal persistence', () => {
+      store.applyPass(
+        makePass({
+          pass_id: 'eval-event-probe-pass',
+          mutations: [
+            {
+              operation: 'add',
+              layer: 'user',
+              category: 'project',
+              key: 'user/memrok/probe-events',
+              value: 'Explicit probes can choose to record an eval event.',
+            },
+          ],
+        })
+      );
+
+      const injector = createInjector(store, {
+        injectionEvalEvents: { enabled: false },
+      });
+      injector.assemble({
+        recentMessages: 'probe event',
+        sessionId: 'probe-session',
+        noPersist: true,
+        logEvalEvent: true,
+        evalEventKind: 'probe',
+        evalEventMetadata: { probeId: 'manual-probe-1' },
+      });
+
+      assert.equal(store.listWorkingSetSnapshots().length, 0);
+      const events = store.listInjectionEvalEvents();
+      assert.equal(events.length, 1);
+      assert.equal(events[0].event_kind, 'probe');
+      assert.equal(events[0].metadata?.probeId, 'manual-probe-1');
+    });
   });
 
   describe('token budget enforcement', () => {

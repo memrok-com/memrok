@@ -2,6 +2,18 @@ export interface InjectorConfig {
   tokenBudget?: number;
   maxNodeChars?: number;
   workingSetSnapshotLimit?: number;
+  injectionEvalEvents?: {
+    enabled?: boolean;
+    eventKind?: string;
+    includeHeaderText?: boolean;
+    maxQueryChars?: number;
+    maxHeaderChars?: number;
+    maxNodeValueChars?: number;
+    retention?: {
+      maxEvents: number;
+    };
+    metadata?: Record<string, unknown>;
+  };
   layerWeights?: {
     user?: number;
     agent?: number;
@@ -121,6 +133,9 @@ export interface AssembleContext {
   recentMessages?: string;
   sessionId?: string;
   noPersist?: boolean;
+  logEvalEvent?: boolean;
+  evalEventKind?: string;
+  evalEventMetadata?: Record<string, unknown>;
 }
 
 export interface Injector {

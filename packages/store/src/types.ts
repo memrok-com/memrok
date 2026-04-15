@@ -211,6 +211,65 @@ export interface WorkingSetRetentionPolicy {
   maxSnapshots: number;
 }
 
+export interface InjectionEvalEventNode {
+  key: string;
+  passId?: string | null;
+  mutationId?: number | null;
+  layer: 'user' | 'agent' | 'collaboration';
+  category: string;
+  valueExcerpt: string;
+  score?: number;
+  rawScore?: number;
+  semanticScore?: number;
+  queryCoverage?: number;
+  keyTokenCoverage?: number;
+  family?: string;
+  domain?: string | null;
+  domainMatch?: boolean | null;
+  outOfContextRisk?: number;
+  selectedBecause?: string[];
+  anchorIds?: string[];
+  matchedAnchorIds?: string[];
+  hygieneState?: string | null;
+  hygieneAction?: string | null;
+  hygieneScore?: number | null;
+  scoreAdjustments?: Record<string, number>;
+}
+
+export interface InjectionEvalEvent {
+  id: number;
+  event_kind: string;
+  session_id: string | null;
+  query_excerpt: string | null;
+  query_hash: string | null;
+  query_chars: number;
+  header_text: string | null;
+  header_tokens: number;
+  nodes_used: number;
+  selected_nodes: InjectionEvalEventNode[];
+  rejected_candidates: InjectionEvalEventNode[];
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface CreateInjectionEvalEventInput {
+  eventKind: string;
+  sessionId?: string | null;
+  queryExcerpt?: string | null;
+  queryHash?: string | null;
+  queryChars: number;
+  headerText?: string | null;
+  headerTokens: number;
+  nodesUsed: number;
+  selectedNodes: InjectionEvalEventNode[];
+  rejectedCandidates?: InjectionEvalEventNode[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface InjectionEvalEventRetentionPolicy {
+  maxEvents: number;
+}
+
 export interface ProvenanceLink {
   observation: ArchiveObservation | null;
   artifact: DerivedArtifact | null;
@@ -258,6 +317,15 @@ export interface WorkingSetStore {
   getProvenanceForWorkingSetSnapshot(snapshotId: number): ProvenanceLink[];
 }
 
-export interface Store extends ArchiveStore, ArtifactStore, GraphStore, WorkingSetStore {
+export interface InjectionEvalEventStore {
+  createInjectionEvalEvent(
+    input: CreateInjectionEvalEventInput,
+    retention?: InjectionEvalEventRetentionPolicy,
+  ): InjectionEvalEvent;
+  listInjectionEvalEvents(limit?: number): InjectionEvalEvent[];
+  getInjectionEvalEvent(id: number): InjectionEvalEvent | null;
+}
+
+export interface Store extends ArchiveStore, ArtifactStore, GraphStore, WorkingSetStore, InjectionEvalEventStore {
   close(): void;
 }

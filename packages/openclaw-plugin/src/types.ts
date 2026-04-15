@@ -26,6 +26,21 @@ export interface BootstrapConfig {
   delayMs?: number;
 }
 
+export interface EvalEventsConfig {
+  /** Enable runtime injection eval event logging. Default: false */
+  enabled?: boolean;
+  /** Include bounded rendered header text. Default: true */
+  includeHeaderText?: boolean;
+  /** Max recent-context excerpt chars. Default: 1000 */
+  maxQueryChars?: number;
+  /** Max rendered-header chars. Default: 4000 */
+  maxHeaderChars?: number;
+  /** Max selected-node value excerpt chars. Default: 220 */
+  maxNodeValueChars?: number;
+  /** Max events retained in the local DB. Default: 500 */
+  maxEvents?: number;
+}
+
 export interface MemrokPluginConfig {
   dbPath?: string;
   scribeProvider?: string;
@@ -36,6 +51,7 @@ export interface MemrokPluginConfig {
   tokenBudget?: number;
   reflection?: ReflectionConfig;
   bootstrap?: BootstrapConfig;
+  evalEvents?: EvalEventsConfig;
 }
 
 export interface ResolvedReflectionConfig {
@@ -54,6 +70,15 @@ export interface ResolvedBootstrapConfig {
   delayMs: number;
 }
 
+export interface ResolvedEvalEventsConfig {
+  enabled: boolean;
+  includeHeaderText: boolean;
+  maxQueryChars: number;
+  maxHeaderChars: number;
+  maxNodeValueChars: number;
+  maxEvents: number;
+}
+
 export interface ResolvedConfig {
   dbPath: string;
   scribeProvider?: string;
@@ -64,6 +89,7 @@ export interface ResolvedConfig {
   tokenBudget: number;
   reflection: ResolvedReflectionConfig;
   bootstrap: ResolvedBootstrapConfig;
+  evalEvents: ResolvedEvalEventsConfig;
 }
 
 export interface Message {

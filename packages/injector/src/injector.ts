@@ -1,5 +1,13 @@
-import type { GraphStore, Node, WorkingSetStore } from '@memrok/store';
+import { createHash } from 'node:crypto';
 import type {
+  CreateInjectionEvalEventInput,
+  GraphStore,
+  InjectionEvalEventRetentionPolicy,
+  Node,
+  WorkingSetStore,
+} from '@memrok/store';
+import type {
+  AssembleContext,
   InjectorConfig,
   RelevanceWeights,
   WorkingSet,
@@ -14,6 +22,10 @@ const DEFAULT_MAX_NODE_CHARS = 150;
 const DEFAULT_MAX_AGE = 90;
 const DEFAULT_CACHE_MAX_AGE = 30000;
 const DEFAULT_WORKING_SET_SNAPSHOT_LIMIT = 50;
+const DEFAULT_EVAL_EVENT_RETENTION_LIMIT = 500;
+const DEFAULT_EVAL_EVENT_QUERY_CHARS = 1000;
+const DEFAULT_EVAL_EVENT_HEADER_CHARS = 4000;
+const DEFAULT_EVAL_EVENT_NODE_VALUE_CHARS = 220;
 
 const DEFAULT_LAYER_WEIGHTS = { user: 0.5, agent: 0.25, collaboration: 0.25 };
 const DEFAULT_RELEVANCE_WEIGHTS: RelevanceWeights = {
@@ -508,6 +520,16 @@ function normalize(value: number): number {
   return Math.min(1, value / 10);
 }
 
+function boundedText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(0, maxChars - 1))}\u2026`;
+}
+
+function hashText(value: string): string | null {
+  if (!value) return null;
+  return createHash('sha256').update(value).digest('hex');
+}
+
 function scoreNode(
   node: Node,
   weights: RelevanceWeights,
@@ -653,6 +675,19 @@ function isEligibleCandidate(params: {
   return true;
 }
 
+type InjectionEvalEventCapableStore = GraphStore & WorkingSetStore & {
+  createInjectionEvalEvent: (
+    input: CreateInjectionEvalEventInput,
+    retention?: InjectionEvalEventRetentionPolicy,
+  ) => unknown;
+};
+
+function canCreateInjectionEvalEvent(
+  store: GraphStore & WorkingSetStore,
+): store is InjectionEvalEventCapableStore {
+  return typeof (store as Partial<InjectionEvalEventCapableStore>).createInjectionEvalEvent === 'function';
+}
+
 export function createInjector(
   store: GraphStore & WorkingSetStore,
   config?: InjectorConfig
@@ -663,6 +698,17 @@ export function createInjector(
   const cacheMaxAge = config?.cacheMaxAge ?? DEFAULT_CACHE_MAX_AGE;
   const workingSetSnapshotLimit =
     config?.workingSetSnapshotLimit ?? DEFAULT_WORKING_SET_SNAPSHOT_LIMIT;
+  const evalEventConfig = config?.injectionEvalEvents;
+  const evalEventRetention = evalEventConfig?.retention ?? {
+    maxEvents: DEFAULT_EVAL_EVENT_RETENTION_LIMIT,
+  };
+  const evalEventMaxQueryChars =
+    evalEventConfig?.maxQueryChars ?? DEFAULT_EVAL_EVENT_QUERY_CHARS;
+  const evalEventMaxHeaderChars =
+    evalEventConfig?.maxHeaderChars ?? DEFAULT_EVAL_EVENT_HEADER_CHARS;
+  const evalEventMaxNodeValueChars =
+    evalEventConfig?.maxNodeValueChars ?? DEFAULT_EVAL_EVENT_NODE_VALUE_CHARS;
+  const evalEventIncludeHeaderText = evalEventConfig?.includeHeaderText ?? true;
 
   const layerWeights = {
     user: config?.layerWeights?.user ?? DEFAULT_LAYER_WEIGHTS.user,
@@ -691,7 +737,75 @@ export function createInjector(
   let cache: { header: ContextHeader; timestamp: number } | null = null;
   let kwCache: KeywordCache | null = null;
 
-  function selectWorkingSet(context?: { recentMessages?: string; sessionId?: string }): WorkingSet {
+  function shouldLogInjectionEvalEvent(context?: AssembleContext): boolean {
+    if (!canCreateInjectionEvalEvent(store)) return false;
+    if (context?.logEvalEvent === true) return true;
+    return evalEventConfig?.enabled === true && context?.noPersist !== true;
+  }
+
+  function persistInjectionEvalEvent(
+    header: ContextHeader,
+    query: string,
+    context?: AssembleContext,
+    cached = false,
+  ): void {
+    if (!shouldLogInjectionEvalEvent(context)) return;
+    if (!canCreateInjectionEvalEvent(store)) return;
+
+    const selectedNodes = (header.debugNodes ?? []).map((node) => ({
+      key: node.key,
+      layer: node.layer,
+      category: node.category,
+      valueExcerpt: boundedText(node.value, evalEventMaxNodeValueChars),
+      score: node.score,
+      rawScore: node.rawScore,
+      semanticScore: node.semanticScore,
+      queryCoverage: node.queryCoverage,
+      keyTokenCoverage: node.keyTokenCoverage,
+      family: node.family,
+      domain: node.domain,
+      domainMatch: node.domainMatch,
+      outOfContextRisk: node.outOfContextRisk,
+      selectedBecause: node.selectedBecause,
+      anchorIds: node.anchorIds,
+      matchedAnchorIds: node.matchedAnchorIds,
+      hygieneState: node.hygieneState,
+      hygieneAction: node.hygieneAction,
+      hygieneScore: node.hygieneScore,
+      scoreAdjustments: node.scoreAdjustments,
+    }));
+
+    store.createInjectionEvalEvent(
+      {
+        eventKind: context?.evalEventKind ?? evalEventConfig?.eventKind ?? 'runtime',
+        sessionId: context?.sessionId ?? null,
+        queryExcerpt: query ? boundedText(query, evalEventMaxQueryChars) : null,
+        queryHash: hashText(query),
+        queryChars: query.length,
+        headerText: evalEventIncludeHeaderText
+          ? boundedText(header.text, evalEventMaxHeaderChars)
+          : null,
+        headerTokens: header.tokens,
+        nodesUsed: header.nodesUsed,
+        selectedNodes,
+        rejectedCandidates: [],
+        metadata: {
+          ...(evalEventConfig?.metadata ?? {}),
+          ...(context?.evalEventMetadata ?? {}),
+          cached,
+          privacy: {
+            queryExcerptChars: evalEventMaxQueryChars,
+            headerTextChars: evalEventIncludeHeaderText ? evalEventMaxHeaderChars : 0,
+            nodeValueExcerptChars: evalEventMaxNodeValueChars,
+          },
+          topRejectedCandidatesAvailable: false,
+        },
+      },
+      evalEventRetention,
+    );
+  }
+
+  function selectWorkingSet(context?: AssembleContext): WorkingSet {
     const recentMessages = context?.recentMessages ?? '';
     const nodes = store.queryNodes({ active: true });
 
@@ -1112,12 +1226,14 @@ export function createInjector(
     };
   }
 
-  function assemble(context?: { recentMessages?: string; sessionId?: string; noPersist?: boolean }): ContextHeader {
+  function assemble(context?: AssembleContext): ContextHeader {
     const recentMessages = context?.recentMessages ?? '';
 
     // Header cache is only valid for context-free calls (no recentMessages)
     if (!recentMessages && cache && Date.now() - cache.timestamp < cacheMaxAge) {
-      return { ...cache.header, cachedAt: cache.timestamp };
+      const cachedHeader = { ...cache.header, cachedAt: cache.timestamp };
+      persistInjectionEvalEvent(cachedHeader, recentMessages, context, true);
+      return cachedHeader;
     }
 
     const workingSet = selectWorkingSet(context);
@@ -1151,6 +1267,8 @@ export function createInjector(
     if (!recentMessages) {
       cache = { header, timestamp: Date.now() };
     }
+
+    persistInjectionEvalEvent(header, recentMessages, context);
 
     return header;
   }

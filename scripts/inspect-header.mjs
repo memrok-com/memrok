@@ -9,6 +9,9 @@ let tokenBudget = 1000;
 let recentMessages = '';
 let json = false;
 let noPersist = false;
+let logEvalEvent = false;
+let sessionId = null;
+let evalEventKind = 'probe';
 let outputPath = null;
 
 for (let i = 0; i < args.length; i++) {
@@ -16,14 +19,24 @@ for (let i = 0; i < args.length; i++) {
   if (arg === '--db' && args[i + 1]) dbPath = args[++i];
   else if (arg === '--budget' && args[i + 1]) tokenBudget = Number(args[++i]);
   else if (arg === '--recent' && args[i + 1]) recentMessages = args[++i];
+  else if (arg === '--session-id' && args[i + 1]) sessionId = args[++i];
   else if (arg === '--json') json = true;
   else if (arg === '--dry-run' || arg === '--no-persist') noPersist = true;
+  else if (arg === '--log-eval-event') logEvalEvent = true;
+  else if (arg === '--event-kind' && args[i + 1]) evalEventKind = args[++i];
   else if (arg === '--out' && args[i + 1]) outputPath = args[++i];
 }
 
 const store = createStore(dbPath);
 const injector = createInjector(store, { tokenBudget });
-const header = injector.assemble({ recentMessages, noPersist });
+const header = injector.assemble({
+  recentMessages,
+  noPersist,
+  sessionId,
+  logEvalEvent,
+  evalEventKind,
+  evalEventMetadata: logEvalEvent ? { source: 'scripts/inspect-header.mjs' } : undefined,
+});
 
 function emit(text) {
   if (outputPath) {
@@ -46,6 +59,7 @@ lines.push(`tokens: ${header.tokens}`);
 lines.push(`nodesUsed: ${header.nodesUsed}`);
 lines.push(`layers: user=${header.layers.user}, agent=${header.layers.agent}, collaboration=${header.layers.collaboration}`);
 lines.push(`noPersist: ${noPersist}`);
+lines.push(`logEvalEvent: ${logEvalEvent}`);
 const highRisk = (header.debugNodes ?? []).filter((node) => node.outOfContextRisk >= 0.5);
 lines.push(`highOutOfContextRisk: ${highRisk.length}`);
 lines.push('');

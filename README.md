@@ -95,9 +95,12 @@ node scripts/eval-sessions.mjs --all-sessions --dry-run --json
 node scripts/eval-sessions.mjs --recent-sessions 10 --dry-run --headers
 node scripts/eval-sessions.mjs --session-id <session-id> --dry-run --headers
 npm run eval:injector -- --json
+npm run eval:events -- --limit 20
 ```
 
 `eval:injector` runs the seeded fixture-based critic/eval baseline under `fixtures/injection-evals/`. It uses synthetic, inspectable cases inspired by real failure patterns, not a live Memrok database dump, so contributors can run and extend it on their own forks.
+
+`eval:events` inspects the bounded runtime injection-eval events stored locally in the Memrok DB. These are opt-in observation records for real injections and explicit probes, intended to complement the synthetic fixture suite rather than replace it.
 
 Notes:
 - `--dry-run` / `--no-persist` prevents working-set snapshot writes during probing.
@@ -105,6 +108,7 @@ Notes:
 - `--headers` is for human-readable terminal/file output.
 - Optional filters such as `--topic`, `--channel`, `--provider`, and `--label` narrow session selection without changing the session-first model.
 - `npm run eval:injector -- --baseline <path-to-previous-run.json>` compares the current run against a saved baseline.
+- Runtime event logging is off by default. Enable it through the OpenClaw plugin config under `evalEvents` if you want bounded local observation of real injections.
 
 ## Privacy & Data Flow
 

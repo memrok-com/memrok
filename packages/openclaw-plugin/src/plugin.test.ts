@@ -48,7 +48,30 @@ describe('openclaw plugin orchestration', () => {
     assert.equal(resolved.idleMinutes, 15);
     assert.equal(resolved.tokenBudget, 1000);
     assert.equal(resolved.bootstrap.enabled, false);
+    assert.equal(resolved.evalEvents.enabled, false);
+    assert.equal(resolved.evalEvents.maxEvents, 500);
     assert.ok(resolved.dbPath.endsWith('/.memrok/memrok.db'));
+  });
+
+  it('resolves eval event logging config overrides', () => {
+    const { api } = createApi();
+    const resolved = resolveConfig({
+      evalEvents: {
+        enabled: true,
+        includeHeaderText: false,
+        maxQueryChars: 120,
+        maxHeaderChars: 600,
+        maxNodeValueChars: 80,
+        maxEvents: 12,
+      },
+    }, api);
+
+    assert.equal(resolved.evalEvents.enabled, true);
+    assert.equal(resolved.evalEvents.includeHeaderText, false);
+    assert.equal(resolved.evalEvents.maxQueryChars, 120);
+    assert.equal(resolved.evalEvents.maxHeaderChars, 600);
+    assert.equal(resolved.evalEvents.maxNodeValueChars, 80);
+    assert.equal(resolved.evalEvents.maxEvents, 12);
   });
 
   it('resolves reflection config defaults', () => {

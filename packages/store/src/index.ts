@@ -27,5 +27,10 @@ export type {
   WorkingSetStore,
   CreateWorkingSetSnapshotInput,
   WorkingSetRetentionPolicy,
+  InjectionEvalEvent,
+  InjectionEvalEventNode,
+  InjectionEvalEventStore,
+  CreateInjectionEvalEventInput,
+  InjectionEvalEventRetentionPolicy,
   ProvenanceLink,
 } from './types.js';

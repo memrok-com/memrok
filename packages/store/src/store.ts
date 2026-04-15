@@ -22,6 +22,9 @@ import type {
   NodeHygieneRecord,
   NodeHygieneEvent,
   UpsertNodeHygieneInput,
+  InjectionEvalEvent,
+  CreateInjectionEvalEventInput,
+  InjectionEvalEventRetentionPolicy,
 } from './types.js';
 
 export function createStore(dbPath: string): Store {
@@ -146,6 +149,25 @@ export function createStore(dbPath: string): Store {
       reason_codes: parseJson<string[]>((row.reason_codes as string | null) ?? null) ?? [],
       details: parseJson<Record<string, unknown>>((row.details as string | null) ?? null),
       source: row.source as string,
+      created_at: row.created_at as string,
+    };
+  }
+
+  function mapInjectionEvalEvent(row: Record<string, unknown> | undefined): InjectionEvalEvent | null {
+    if (!row) return null;
+    return {
+      id: row.id as number,
+      event_kind: row.event_kind as string,
+      session_id: (row.session_id as string | null) ?? null,
+      query_excerpt: (row.query_excerpt as string | null) ?? null,
+      query_hash: (row.query_hash as string | null) ?? null,
+      query_chars: row.query_chars as number,
+      header_text: (row.header_text as string | null) ?? null,
+      header_tokens: row.header_tokens as number,
+      nodes_used: row.nodes_used as number,
+      selected_nodes: parseJson<InjectionEvalEvent['selected_nodes']>((row.selected_nodes as string | null) ?? null) ?? [],
+      rejected_candidates: parseJson<InjectionEvalEvent['rejected_candidates']>((row.rejected_candidates as string | null) ?? null) ?? [],
+      metadata: parseJson<Record<string, unknown>>((row.metadata as string | null) ?? null),
       created_at: row.created_at as string,
     };
   }
@@ -327,6 +349,29 @@ export function createStore(dbPath: string): Store {
 
   const listWorkingSetSnapshotIdsForRetention = db.prepare(
     'SELECT id FROM working_set_snapshots ORDER BY id DESC LIMIT -1 OFFSET ?'
+  );
+
+  const insertInjectionEvalEvent = db.prepare(`
+    INSERT INTO injection_eval_events
+      (event_kind, session_id, query_excerpt, query_hash, query_chars, header_text, header_tokens, nodes_used, selected_nodes, rejected_candidates, metadata)
+    VALUES
+      (@event_kind, @session_id, @query_excerpt, @query_hash, @query_chars, @header_text, @header_tokens, @nodes_used, @selected_nodes, @rejected_candidates, @metadata)
+  `);
+
+  const getInjectionEvalEventById = db.prepare(
+    'SELECT * FROM injection_eval_events WHERE id = ?'
+  );
+
+  const listInjectionEvalEventRows = db.prepare(
+    'SELECT * FROM injection_eval_events ORDER BY id DESC LIMIT ?'
+  );
+
+  const deleteInjectionEvalEventById = db.prepare(
+    'DELETE FROM injection_eval_events WHERE id = ?'
+  );
+
+  const listInjectionEvalEventIdsForRetention = db.prepare(
+    'SELECT id FROM injection_eval_events ORDER BY id DESC LIMIT -1 OFFSET ?'
   );
 
   function now(): string {
@@ -589,6 +634,36 @@ export function createStore(dbPath: string): Store {
     return { ...snapshot, items };
   });
 
+  const createInjectionEvalEventTx = db.transaction((
+    input: CreateInjectionEvalEventInput,
+    retention?: InjectionEvalEventRetentionPolicy,
+  ): InjectionEvalEvent => {
+    const result = insertInjectionEvalEvent.run({
+      event_kind: input.eventKind,
+      session_id: input.sessionId ?? null,
+      query_excerpt: input.queryExcerpt ?? null,
+      query_hash: input.queryHash ?? null,
+      query_chars: input.queryChars,
+      header_text: input.headerText ?? null,
+      header_tokens: input.headerTokens,
+      nodes_used: input.nodesUsed,
+      selected_nodes: JSON.stringify(input.selectedNodes),
+      rejected_candidates: JSON.stringify(input.rejectedCandidates ?? []),
+      metadata: serializeJson(input.metadata),
+    });
+
+    if (retention && retention.maxEvents >= 0) {
+      const rows = listInjectionEvalEventIdsForRetention.all(retention.maxEvents) as Array<{ id: number }>;
+      for (const row of rows) {
+        deleteInjectionEvalEventById.run(row.id);
+      }
+    }
+
+    return mapInjectionEvalEvent(
+      getInjectionEvalEventById.get(Number(result.lastInsertRowid)) as Record<string, unknown>
+    )!;
+  });
+
   function getProvenanceForPass(passId: string): ProvenanceLink {
     const pass = (getPassById.get(passId) as Pass | undefined) ?? null;
     if (!pass) {
@@ -727,6 +802,17 @@ export function createStore(dbPath: string): Store {
       }
       return links;
     },
+    createInjectionEvalEvent: (
+      input: CreateInjectionEvalEventInput,
+      retention?: InjectionEvalEventRetentionPolicy,
+    ) => createInjectionEvalEventTx(input, retention),
+    listInjectionEvalEvents: (limit = 50) =>
+      listInjectionEvalEventRows
+        .all(limit)
+        .map((row) => mapInjectionEvalEvent(row as Record<string, unknown>)!)
+        .filter(Boolean),
+    getInjectionEvalEvent: (id: number) =>
+      mapInjectionEvalEvent(getInjectionEvalEventById.get(id) as Record<string, unknown>),
     rebuild,
     close: () => db.close(),
   };
