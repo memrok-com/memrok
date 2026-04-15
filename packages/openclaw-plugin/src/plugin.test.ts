@@ -192,6 +192,86 @@ describe('openclaw plugin orchestration', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('emits a bounded injection eval event through context engine assemble when enabled', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memrok-plugin-eval-event-'));
+    let runtime: ReturnType<typeof createPluginRegistration> | undefined;
+
+    try {
+      const { api, factories } = createApi({
+        pluginConfig: {
+          dbPath: join(dir, 'memrok.db'),
+          watchPaths: [dir],
+          tokenBudget: 500,
+          evalEvents: {
+            enabled: true,
+            maxQueryChars: 64,
+            maxHeaderChars: 1000,
+            maxNodeValueChars: 48,
+            maxEvents: 5,
+          },
+        },
+      });
+
+      runtime = createPluginRegistration(api);
+      runtime.store.applyPass({
+        pass_id: 'plugin-eval-seed',
+        mutations: [
+          {
+            operation: 'add',
+            layer: 'user',
+            category: 'preferences',
+            key: 'user.preference.commute',
+            value: 'Michael likes train commutes for async chats and planning lightweight work.',
+          },
+        ],
+      });
+      runtime.injector.invalidate();
+
+      const engine = factories.get('memrok')?.();
+      assert.ok(engine);
+
+      const result = await engine!.assemble({
+        sessionId: 'session-plugin-eval',
+        messages: [
+          {
+            role: 'user',
+            content: 'Can you adapt this async chat plan for my train commute preference and keep it lightweight?',
+          },
+        ],
+      });
+
+      assert.match(result.systemPromptAddition ?? '', /train commutes/);
+
+      const events = runtime.store.listInjectionEvalEvents(10);
+      assert.equal(events.length, 1);
+
+      const event = events[0];
+      assert.equal(event.event_kind, 'runtime');
+      assert.equal(event.session_id, 'session-plugin-eval');
+      assert.equal(event.nodes_used, 1);
+      assert.equal(event.selected_nodes.length, 1);
+      assert.equal(event.selected_nodes[0].key, 'user.preference.commute');
+      assert.ok(event.selected_nodes[0].valueExcerpt.includes('train commutes'));
+      assert.ok(event.selected_nodes[0].valueExcerpt.length <= 48);
+      assert.equal(event.rejected_candidates.length, 0);
+
+      assert.ok(event.query_excerpt?.startsWith('user: Can you adapt'));
+      assert.ok(event.query_excerpt.length <= 64);
+      assert.ok(event.query_hash);
+      assert.ok(event.query_chars > event.query_excerpt.length);
+      assert.ok(event.header_text?.includes('train commutes'));
+      assert.ok(event.header_text.length <= 1000);
+      assert.equal(event.metadata?.source, 'openclaw-plugin');
+      assert.equal(event.metadata?.topRejectedCandidatesAvailable, false);
+      assert.equal((event.metadata?.privacy as Record<string, unknown>).queryExcerptChars, 64);
+      assert.equal((event.metadata?.privacy as Record<string, unknown>).headerTextChars, 1000);
+      assert.equal((event.metadata?.privacy as Record<string, unknown>).nodeValueExcerptChars, 48);
+    } finally {
+      (runtime?.store as unknown as { close?: () => void }).close?.();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('shouldRunReflection', () => {
