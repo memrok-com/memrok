@@ -12,7 +12,8 @@
     "lint": "npm run lint --workspaces --if-present",
     "hygiene:broad-nodes": "npx tsx scripts/hygiene-broad-nodes.ts",
     "eval:injector": "npx tsx scripts/run-injection-evals.ts",
-    "eval:events": "node scripts/inspect-injection-evals.mjs"
+    "eval:events": "node scripts/inspect-injection-evals.mjs",
+    "smoke:packaged-plugin": "node scripts/smoke-packaged-plugin.mjs"
   },
   "license": "MIT",
   "repository": {

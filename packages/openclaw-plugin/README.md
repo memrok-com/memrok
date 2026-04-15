@@ -94,13 +94,23 @@ Examples:
 node scripts/eval-sessions.mjs --all-sessions --dry-run --json
 node scripts/eval-sessions.mjs --recent-sessions 10 --dry-run --headers
 node scripts/eval-sessions.mjs --session-id <session-id> --dry-run --headers
+npm run eval:injector -- --json
+npm run eval:events -- --limit 20
+npm run smoke:packaged-plugin
 ```
+
+`eval:injector` runs the seeded fixture-based critic/eval baseline under `fixtures/injection-evals/`. Use `--baseline <previous-run.json>` for before/after comparisons while tuning injection behavior.
+
+`eval:events` inspects bounded runtime injection-eval events stored in the local Memrok DB. Runtime event logging is off by default; enable it with the `evalEvents` plugin config block when you want local observation of real injections.
+
+`smoke:packaged-plugin` checks the packaged OpenClaw plugin artifact produced by `npm pack`, including built extension files, manifest, README, declarations, and bundled prompts.
 
 Notes:
 - `--dry-run` / `--no-persist` prevents working-set snapshot writes during probing.
 - `--json` includes the full rendered header as `headerText`.
 - `--headers` is for human-readable terminal/file output.
 - Optional filters such as `--topic`, `--channel`, `--provider`, and `--label` narrow session selection without changing the session-first model.
+- Full workflow guidance: [`docs/eval-loop.md`](../../docs/eval-loop.md).
 
 ## Privacy & Data Flow
 

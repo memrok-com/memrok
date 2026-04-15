@@ -95,13 +95,19 @@ function renderText(run: InjectionEvalRun, baseline: ReturnType<typeof compareIn
   return `${lines.join('\n')}\n`;
 }
 
+function loadBaselineRun(baselinePath: string): InjectionEvalRun {
+  const parsed = JSON.parse(fs.readFileSync(baselinePath, 'utf8')) as InjectionEvalRun | { run?: InjectionEvalRun };
+  if ('run' in parsed && parsed.run) return parsed.run;
+  return parsed as InjectionEvalRun;
+}
+
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const fixtures = loadFixtures(options.fixturesDir, options.fixtureIds);
   const run = runInjectionEvalFixtures(fixtures);
   const baseline = options.baselinePath
     ? compareInjectionEvalRuns(
-      JSON.parse(fs.readFileSync(options.baselinePath, 'utf8')) as InjectionEvalRun,
+      loadBaselineRun(options.baselinePath),
       run,
     )
     : null;

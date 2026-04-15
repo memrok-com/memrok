@@ -33,6 +33,12 @@ jobs:
         working-directory: packages/openclaw-plugin
         run: npx tsup
 
+      - name: Injection eval baseline
+        run: npm run eval:injector -- --json
+
+      - name: Packaged plugin smoke
+        run: npm run smoke:packaged-plugin
+
       - name: Login to ClawHub
         run: bunx clawhub@latest login --no-browser --token "${{ secrets.CLAWHUB_TOKEN }}"
 
