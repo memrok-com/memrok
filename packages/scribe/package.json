@@ -1,6 +1,6 @@
 {
   "name": "@memrok/scribe",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@memrok/store": "0.5.2"
+    "@memrok/store": "0.6.0"
   },
   "devDependencies": {
     "tsx": "^4.19.4",

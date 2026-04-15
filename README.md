@@ -86,32 +86,18 @@ Bootstrap is now **opt-in**. Enable it only if you explicitly want Memrok to see
 
 ## Inspection & Evaluation
 
-Memrok ships with local inspection scripts so you can evaluate injected headers without writing back into Memrok state.
+Memrok ships with local inspection and evaluation tooling.
 
-Examples:
+Common entry points:
 
 ```sh
-node scripts/eval-sessions.mjs --all-sessions --dry-run --json
 node scripts/eval-sessions.mjs --recent-sessions 10 --dry-run --headers
-node scripts/eval-sessions.mjs --session-id <session-id> --dry-run --headers
 npm run eval:injector -- --json
 npm run eval:events -- --limit 20
+npm run smoke:packaged-plugin
 ```
 
-`eval:injector` runs the seeded fixture-based critic/eval baseline under `fixtures/injection-evals/`. It uses synthetic, inspectable cases inspired by real failure patterns, not a live Memrok database dump, so contributors can run and extend it on their own forks.
-
-`eval:events` inspects the bounded runtime injection-eval events stored locally in the Memrok DB. These are opt-in observation records for real injections and explicit probes, intended to complement the synthetic fixture suite rather than replace it.
-
-For the full engineering workflow, including before/after comparisons, converting live probe failures into scrubbed fixtures, and release smoke checks, see [`docs/eval-loop.md`](docs/eval-loop.md).
-
-Notes:
-- `--dry-run` / `--no-persist` prevents working-set snapshot writes during probing.
-- `--json` includes the full rendered header as `headerText`.
-- `--headers` is for human-readable terminal/file output.
-- Optional filters such as `--topic`, `--channel`, `--provider`, and `--label` narrow session selection without changing the session-first model.
-- `npm run eval:injector -- --baseline <path-to-previous-run.json>` compares the current run against a saved baseline.
-- Runtime event logging is off by default. Enable it through the OpenClaw plugin config under `evalEvents` if you want bounded local observation of real injections.
-- Release smoke: `npm run smoke:packaged-plugin` checks the packaged OpenClaw plugin artifact after build.
+If you are contributing to Memrok, use the full workflow in [CONTRIBUTING.md](./CONTRIBUTING.md). For the underlying evaluation model and baseline workflow, see [`docs/eval-loop.md`](docs/eval-loop.md).
 
 ## Privacy & Data Flow
 
