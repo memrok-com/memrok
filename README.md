@@ -2,6 +2,14 @@
 
 *Memory with judgment.*
 
+> **Archived — no longer maintained**
+>
+> Memrok is no longer actively developed or supported. Its maintainer no longer uses OpenClaw and cannot validate compatibility with current versions. No further releases, compatibility fixes or security updates are planned.
+>
+> The source, release history and documentation remain available under the MIT licence. Existing installation instructions are historical, not a recommendation for new deployments.
+>
+> Interested in maintaining Memrok? Forks are welcome. To discuss taking over the existing project, contact [memrok@j2.ms](mailto:memrok@j2.ms). A transfer would require agreement on ongoing maintenance and release ownership.
+
 ---
 
 Memrok is an open-source plugin for [OpenClaw](https://github.com/openclaw/openclaw) that adds a graph-based memory **curation layer** on top of OpenClaw’s built-in recall and dreaming systems. It watches your conversations, archives raw observations, derives curation artifacts, and brings relevant context into every interaction as judged, structured memory rather than raw recall.
@@ -163,7 +171,7 @@ Most options are optional, but scribe provider/model should be set explicitly th
 
 ## Status
 
-Deployed as an OpenClaw context engine plugin with dual-scribe architecture. 93 tests across the monorepo.
+Archived and no longer maintained. Compatibility with current OpenClaw versions is unverified; no further releases, fixes or security updates are planned. The documentation below is retained for historical reference and forks.
 
 Memrok also writes a small health snapshot to `~/.memrok/memrok.status.json`, including recent transcript-scribe, reflective-scribe, and injection activity plus last error and node count.
 
